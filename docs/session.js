@@ -4,11 +4,20 @@
   const CARDIO = '有氧運動';
   const timed = new Set([UNKNOWN,MIXED,CARDIO]);
   const autoMoves = ['滑輪坐姿划船','滑輪高位下拉','啞鈴側平舉'];
-  const quietMs = 4500;
+  const quietMs = 4500;       // 停止活動多久算這組結束
+  const unknownStartMs = 8000; // 自動模式下，沒有完成任何一下時，持續活動多久才記成「動作無法確認」
+  const missLimit = 6;
+  const blinkMs = 600;        // 整個人短暫消失多久內不算追蹤中斷        // 關節短暫看不清楚可容忍的影格數（約 0.5 秒）
+  const swingLimit = {'坐姿划船':18,'高位下拉':20,'引體向上':22};
+  const swingCue = {
+    '坐姿划船':'軀幹前後擺動較大，穩住核心，用手肘帶動',
+    '高位下拉':'身體後仰或晃動較大，維持軀幹穩定再下拉',
+    '引體向上':'身體擺盪較大，放慢速度、控制下放'
+  };
 
-  function classify(points, move) {
+  function classify(points, move, preferSide) {
     const pose = window.GymPose;
-    const single = pose.sample(points,pose.supported(move));
+    const single = pose.sample(points,pose.supported(move),preferSide);
     if (!single) return null;
     const right = single.side===12;
     const shoulder = points[single.side], hip=points[right?24:23];
@@ -19,17 +28,18 @@
       const [lg,rg]=[pose.angle(points[23],points[11],points[13]),pose.angle(points[24],points[12],points[14])];
       const [le,re]=[pose.angle(points[11],points[13],points[15]),pose.angle(points[12],points[14],points[16])];
       const width=pose.visible(points[11])&&pose.visible(points[12])?Math.abs(points[11].x-points[12].x):0;
-      if (![lg,rg,le,re].every(Number.isFinite) || width<body*.48 || Math.min(le,re)<135) return null;
-      return {...single,side:0,extended:Math.max(lg,rg)<25,bent:Math.min(lg,rg)>64,
-        cue:Math.abs(lg-rg)>25&&Math.max(lg,rg)>48?'影像中左右抬起幅度不同，請核對鏡頭是否對正。':''};
+      if (![lg,rg,le,re].every(Number.isFinite) || width<body*.48 || Math.min(le,re)<120) return null;
+      return {...single,side:0,extended:Math.max(lg,rg)<35,bent:Math.min(lg,rg)>64,
+        cue:Math.abs(lg-rg)>25&&Math.max(lg,rg)>48?'左右抬起高度不同，兩手同時平舉':single.cue};
     }
+    if (![elbow,wrist].every(pose.visible)) return null;
     const y=(wrist.y-shoulder.y)/body;
     const elbowY=(elbow.y-shoulder.y)/body;
     const x=Math.abs(wrist.x-shoulder.x)/body;
     const row=move===autoMoves[0];
     const extended=single.extended && (row?y>.12&&y<.85&&x>.37:y<-.56);
     const bent=single.bent && (row?y>.10&&y<.9&&elbowY>.13:y<.22&&elbowY>.04);
-    return {...single,extended,bent,cue:''};
+    return {...single,extended,bent};
   }
 
   function exerciseTracker(hint) {
@@ -43,13 +53,22 @@
         let cue='';
         for(const move of candidates) {
           const state=states.get(move);
-          const sample=hint?pose.sample(points,pose.supported(move)):classify(points,move);
-          if (!sample || (state && state.side!==sample.side)) { states.delete(move); continue; }
+          const sample=hint?pose.sample(points,pose.supported(move),state?.side):classify(points,move,state?.side);
+          if (!sample || (state && state.side!==sample.side)) {
+            if(state && ++state.miss>missLimit) states.delete(move);
+            continue;
+          }
           const phase=state?.phase||'start';
           const atEndpoint=phase==='work'?sample.bent:sample.extended;
           const frames=atEndpoint?(state?.frames||0)+1:0;
+          const rule=pose.supported(move);
+          let base=state?.base;
+          if(Number.isFinite(sample.torso)&&swingLimit[rule]){
+            if(phase==='start'&&sample.extended)base=Number.isFinite(base)?base*.8+sample.torso*.2:sample.torso;
+            else if(Number.isFinite(base)&&Math.abs(sample.torso-base)>swingLimit[rule])cue=swingCue[rule];
+          }
           if (sample.cue&&phase!=='start') cue=sample.cue;
-          const next={phase,frames,side:sample.side};
+          const next={phase,frames,side:sample.side,miss:0,base};
           if(frames>=2) {
             next.frames=0;
             next.phase=phase==='start'||phase==='return'?'work':'return';
@@ -91,8 +110,9 @@
     };
   }
 
-  function create({hint='',onSet=()=>{},onRest=()=>{}}={}) {
+  function create({hint='',onSet=()=>{},onRest=()=>{},onRep=()=>{}}={}) {
     const tracker=exerciseTracker(hint), motion=motionTracker();
+    const timedMode=Boolean(hint&&!window.GymPose.supported(hint));
     let current=null, rest=null, lastTracked=null, lostAt=null, view={phase:'ready', tracking:false};
     let pausedAt=null, pausedTotal=0;
     function pause(at) {
@@ -116,7 +136,8 @@
       const end=Math.max(current.start+1,current.lastActive);
       const missing=current.gaps.reduce((sum,[start,stop])=>sum+Math.max(0,Math.min(end,stop)-Math.max(current.start,start)),0);
       const restAt=Math.max(end,current.gaps.at(-1)?.[1]??end);
-      rest={at:restAt,id:onSet({name,reps,durationMs:Math.max(1,end-current.start-missing),trackingInterrupted:current.gaps.length>0||lostAt!==null})};
+      const set={name,reps,durationMs:Math.max(1,end-current.start-missing),trackingInterrupted:current.gaps.length>0||lostAt!==null};
+      rest={at:restAt,id:onSet(set),set};
       current=null;
     }
     function update(points,at) {
@@ -125,10 +146,12 @@
       const signal=motion.update(points,at);
       if(!signal.tracking) {
         if(lostAt===null)lostAt=lastTracked??at;
-        tracker.clear();
+        // 短暫看不到（不到 0.6 秒）保留這一下的進度；太久才重置
+        if(at-lostAt>blinkMs)tracker.clear();
         return view={...view,tracking:false,phase:current?'working':rest?'rest':'ready',restMs:rest?Math.max(0,at-rest.at):0};
       }
-      const gap=lostAt??(lastTracked!==null&&at-lastTracked>900?lastTracked:null);
+      const lost=lostAt!==null&&at-lostAt>blinkMs?lostAt:null;
+      const gap=lost??(lastTracked!==null&&at-lastTracked>900?lastTracked:null);
       if(gap!==null&&current) {
         current.gaps.push([gap,at]);
         current.quietFrom=at;
@@ -137,27 +160,33 @@
       lostAt=null;
       lastTracked=at;
       const {move,cue}=tracker.update(points);
-      const timedMode=Boolean(hint&&!window.GymPose.supported(hint));
-      const canStart=move||signal.active&&(!rest||timedMode&&at-signal.onset>=3000);
+      // 可計次的動作要先完成一下才開新的一組，避免走動、調整器材被誤記成一組
+      const longMotion=signal.active&&signal.onset!==null&&at-signal.onset>=(timedMode?3000:unknownStartMs);
+      const canStart=move||(timedMode?signal.active&&(!rest||longMotion):longMotion);
       if(!current && canStart) {
-        const start=Math.max(rest?.at||0,signal.onset||at);
+        const start=Math.max(rest?.at||0,signal.onset??at);
         if(rest)onRest(rest.id,start-rest.at);
         rest=null;current={start,lastActive:at,quietFrom:at,gaps:[],moves:new Map()};
       }
       if(current) {
         if(signal.active)current.lastActive=Math.max(current.lastActive,signal.motionAt);
-        if(move)current.lastActive=at;
-        if(move)current.moves.set(move,(current.moves.get(move)||0)+1);
+        if(move){
+          current.lastActive=at;
+          const count=(current.moves.get(move)||0)+1;
+          current.moves.set(move,count);
+          onRep(move,count);
+        }
         if(at-Math.max(current.quietFrom,current.lastActive)>=quietMs){finish();tracker.clear();}
       }
       const keys=current?[...current.moves.keys()]:[];
       const name=keys.length>1?MIXED:keys[0]||hint||'';
       return view={phase:current?'working':rest?'rest':'ready',tracking:true,name,
-        reps:current?.moves.get(name)||0,cue:current?cue:'',
-        liveMs:current?Math.max(0,at-current.start):0,restMs:rest?Math.max(0,at-rest.at):0};
+        reps:current?.moves.get(name)||0,cue:current||!timedMode?cue:'',
+        liveMs:current?Math.max(0,at-current.start):0,restMs:rest?Math.max(0,at-rest.at):0,
+        lastSet:rest?.set||null};
     }
     return {update,finish,pause,resume,view:()=>view};
   }
 
-  window.GymSession={create,exerciseTracker,autoMoves,timed};
+  window.GymSession={create,exerciseTracker,autoMoves,timed,quietMs};
 })();

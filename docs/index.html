@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#16221e" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#111614" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="GymMonitor">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" href="icon-192.png">
+<title>GymMonitor｜訓練監測</title>
+<link rel="stylesheet" href="style.css?v=8">
+<script defer src="library.js?v=8"></script>
+<script defer src="lib.js?v=8"></script>
+<script defer src="research.js?v=8"></script>
+<script defer src="observations.js?v=8"></script>
+<script defer src="camera.js?v=8"></script>
+<script defer src="session.js?v=8"></script>
+<script defer src="overlay.js?v=8"></script>
+<script defer src="capture.js?v=8"></script>
+<script defer src="app.js?v=8"></script>
+</head>
+<body>
+<header>
+  <a class="brand" href="#workout">GymMonitor</a>
+  <nav aria-label="其他功能"><button id="open-library" class="plain" type="button">動作庫</button><button id="open-history" class="plain" type="button">紀錄</button></nav>
+</header>
+<main id="workout">
+  <div class="workout">
+    <section class="panel monitor" aria-label="訓練畫面">
+      <div class="viewport" id="viewport">
+        <video id="video" playsinline muted aria-label="姿態辨識畫面"></video>
+        <canvas id="overlay" aria-hidden="true"></canvas>
+        <div id="preview" class="preview"><span id="preview-title">準備開始</span><small>手機放穩、全身或目標關節入鏡，畫面保持單人。</small></div>
+        <div class="lens-controls" id="lens-controls"><span id="lens-state" role="status"></span><button id="switch-lens" class="chip" type="button">切換鏡頭</button></div>
+        <div class="legend" id="legend" hidden><span class="dot red"></span>主要<span class="dot blue"></span>協同<span class="dot white"></span>骨架</div>
+      </div>
+      <div class="status">
+        <div><p id="state" role="status">待開始</p><h2 id="move">自動辨識</h2><p id="cue" class="cue" aria-live="polite"></p></div>
+        <div id="metric" class="metric" aria-label="即時數字">—</div>
+      </div>
+      <div class="controls">
+        <div id="move-input"><span class="label">選擇動作（選填）</span><button id="choose-move" class="plain chooser" type="button"><span id="choose-move-name">自動辨識</span><small id="choose-move-note">划船、下拉、側平舉會自動辨識</small></button></div>
+        <div class="main-controls"><button id="start" class="primary" type="button">開始訓練</button><button id="pause" class="plain" type="button" hidden>暫停</button><button id="stop" class="primary stop" type="button" hidden>結束訓練</button></div>
+        <details id="options"><summary>訓練選項</summary>
+          <div class="option-grid">
+            <label class="check"><input id="voice-count" type="checkbox" checked>語音報數</label>
+            <label class="check"><input id="voice-cue" type="checkbox" checked>語音提醒動作</label>
+            <label class="check"><input id="mirror" type="checkbox" checked>前鏡頭鏡像顯示</label>
+            <label>辨識模型<select id="model"><option value="lite">輕量（反應快）</option><option value="full">完整（較準、較耗電）</option></select></label>
+            <button id="pick" class="plain" type="button">選影片分析</button><input id="file" type="file" accept="video/*" hidden>
+          </div>
+          <p class="subtle" id="auto-scope"></p>
+        </details>
+      </div>
+    </section>
+    <aside>
+      <section class="panel set-panel" aria-label="上一組">
+        <div><p class="subtle">上一組</p><h2 id="last-move">尚未開始</h2><p id="last-detail"></p></div>
+        <button id="edit-last" class="plain" type="button" hidden>改動作</button>
+        <div id="quick-set" hidden>
+          <div id="quick-reps"><button id="rep-minus" class="plain" type="button" aria-label="減一下">−</button><output id="quick-count"></output><button id="rep-plus" class="plain" type="button" aria-label="加一下">＋</button></div>
+          <label>重量（kg）<input id="quick-weight" type="number" inputmode="decimal" min="0" step="any" placeholder="未填"></label>
+          <button id="same-weight" class="plain" type="button" hidden></button>
+        </div>
+      </section>
+      <section class="panel muscles" id="muscles" hidden>
+        <div id="demo-photos" hidden><figure><img id="demo-start" alt="動作起始姿勢"><figcaption>起始</figcaption></figure><figure><img id="demo-end" alt="動作完成位置"><figcaption>動作位置</figcaption></figure></div>
+        <div><h2 id="muscle-title">目標肌群</h2><p id="primary-muscle"></p><p id="secondary-muscle"></p><p id="setup"></p>
+        <small>取景畫面的紅、藍色是依關節位置畫的目標區域示意，不是偵測肌肉出力。</small> <button id="muscle-detail" class="link" type="button">動作說明</button></div>
+      </section>
+    </aside>
+  </div>
+  <p id="notice" class="subtle" role="status">影像在裝置端分析，紀錄儲存在此瀏覽器。</p>
+  <p class="subtle version">GymMonitor v8 · 2026-11-20 · 動作資料：Free Exercise DB（公有領域）</p>
+</main>
+<datalist id="move-options"></datalist>
+
+<dialog id="picker" class="sheet" aria-labelledby="picker-title">
+  <div class="sheet-top">
+    <button id="picker-back" class="icon" type="button" aria-label="返回">‹</button>
+    <h2 id="picker-title">選擇運動</h2>
+    <button id="picker-search-toggle" class="icon" type="button" aria-label="搜尋">⌕</button>
+  </div>
+  <div id="picker-searchbar" class="searchbar" hidden><input id="picker-search" type="search" placeholder="搜尋運動名稱" enterkeyhint="search" autocomplete="off"></div>
+  <div id="picker-tabs" class="tabs" role="tablist"><button type="button" role="tab" data-tab="all" aria-selected="true">全部</button><button type="button" role="tab" data-tab="recent" aria-selected="false">最近項目</button></div>
+  <div class="sheet-body"><div id="picker-list"></div><nav id="picker-index" class="az" aria-label="字母索引"></nav></div>
+</dialog>
+
+<dialog id="detail" aria-labelledby="d-name">
+  <div class="dialog-top"><h2 id="d-name"></h2><button class="plain" type="button" data-close="detail">關閉</button></div>
+  <p id="d-aliases" class="subtle"></p>
+  <div id="d-badges" class="badges"></div>
+  <div id="d-photos" class="photos" hidden><figure><img id="d-img0" alt="起始姿勢"><figcaption>起始</figcaption></figure><figure><img id="d-img1" alt="動作位置"><figcaption>動作位置</figcaption></figure></div>
+  <dl id="d-facts" class="facts"></dl>
+  <section id="d-guide" hidden><h3>操作要點</h3><p id="d-cue"></p><a id="d-source" target="_blank" rel="noopener noreferrer"></a></section>
+  <section id="d-camera" hidden><h3>拍攝建議</h3><p id="d-camera-text"></p></section>
+  <details id="d-steps" hidden><summary>英文原文步驟（Free Exercise DB）</summary><ol id="d-step-list"></ol></details>
+  <p id="d-empty" class="subtle" hidden></p>
+  <p class="subtle credit">照片與原文步驟：<a href="https://github.com/yuhonas/free-exercise-db" target="_blank" rel="noopener noreferrer">Free Exercise DB</a>（公有領域）</p>
+  <div class="dialog-actions"><button id="d-use" class="primary" type="button">選用這個動作</button></div>
+</dialog>
+
+<dialog id="editor"><form id="edit-form"><h2>修正訓練組</h2>
+  <label>動作<span class="inline"><input id="edit-name" list="move-options" required maxlength="80"><button id="edit-pick" class="plain" type="button">從動作庫選</button></span></label>
+  <label id="rep-field">次數<input id="edit-reps" type="number" min="1" max="999" step="1" placeholder="未計次"></label>
+  <label id="manual-duration" hidden>時長（分鐘）<input id="edit-minutes" type="number" min="0.01" step="any"></label>
+  <details id="extra-edit"><summary>重量與備註</summary><label>重量（kg）<input id="edit-weight" type="number" min="0" step="any" inputmode="decimal"></label><label>備註<input id="edit-note" maxlength="300"></label></details>
+  <p id="edit-duration" class="subtle"></p>
+  <div class="dialog-actions"><button type="button" data-close="editor" class="plain">取消</button><button id="edit-delete" type="button" class="plain danger">刪除這組</button><button class="primary">儲存</button></div>
+  <p id="edit-error" role="status"></p></form></dialog>
+
+<dialog id="history"><div class="dialog-top"><h2>訓練紀錄</h2><button class="plain" type="button" data-close="history">關閉</button></div>
+  <div id="records"></div>
+  <details><summary>其他紀錄功能</summary><button id="manual" class="plain" type="button">手動新增</button>
+    <div class="dialog-actions"><button id="export" class="plain" type="button">匯出備份</button><label class="file-label plain">匯入備份<input id="import" type="file" accept=".json,application/json"></label></div>
+    <p class="subtle">舊網址（ChatGPT 測試站）的紀錄不會自動搬過來：在舊網址「紀錄 → 匯出」，再到這裡匯入。</p>
+    <p id="importmsg" role="status"></p></details></dialog>
+
+<dialog id="weight-editor" aria-labelledby="weight-title"><form id="weight-form"><h2 id="weight-title">修改本組重量</h2><p id="weight-context"></p>
+  <label>重量（kg）<input id="weight-value" type="number" inputmode="decimal" min="0" step="any" placeholder="未填"></label>
+  <div class="dialog-actions"><button type="button" class="plain" data-close="weight-editor">取消</button><button class="primary" type="submit">儲存重量</button></div>
+  <p id="weight-error" role="status"></p></form></dialog>
+</body>
+</html>

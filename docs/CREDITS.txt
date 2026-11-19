@@ -1,0 +1,18 @@
+GymMonitor 使用的外部資料
+
+1. Free Exercise DB（動作名稱英文原文、肌群、器材、難度、步驟、照片）
+   https://github.com/yuhonas/free-exercise-db
+   授權：Unlicense（公有領域）https://github.com/yuhonas/free-exercise-db/blob/main/LICENSE.md
+   照片於使用時直接從該專案的 GitHub 讀取，未複製到本專案。
+   中文名稱為 GymMonitor 自行翻譯（tools/fedb-zh-names.json）。
+
+2. Google MediaPipe Pose Landmarker（裝置端姿態辨識模型）
+   https://ai.google.dev/edge/mediapipe/solutions/vision/pose_landmarker
+   授權：Apache License 2.0
+
+3. 動作名稱與分類架構
+   - 使用者 Google「健身」日曆中的動作名稱（tools/mine-catalog.js，已移除日期）
+   - 使用者提供之手錶 App「選擇運動」畫面截圖中的動作名稱與部位分類
+
+4. 操作要點與來源（research.js）
+   梅奧診所、大學運動中心、器材廠商等公開說明，各動作附原始網址。

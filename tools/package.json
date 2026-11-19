@@ -1,0 +1,15 @@
+{
+  "name": "gymmonitor-tools",
+  "private": true,
+  "description": "GymMonitor 動作庫建置與測試工具",
+  "scripts": {
+    "build": "node build-library.js",
+    "test": "node --test test/*.test.js"
+  },
+  "dependencies": {
+    "pinyin-pro": "^3.26.0"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.65.1"
+  }
+}

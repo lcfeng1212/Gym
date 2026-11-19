@@ -1,14 +1,33 @@
 (() => {
   const sdk='https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14';
-  const model='https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task';
+  const models={
+    lite:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+    full:'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_full/float16/1/pose_landmarker_full.task'
+  };
   const edges=[[11,12],[11,13],[13,15],[12,14],[14,16],[11,23],[12,24],[23,24],[23,25],[25,27],[24,26],[26,28]];
+  // 姿態模型只載入一次，切換鏡頭、暫停後繼續都沿用，避免每次重新下載
+  const detectors=new Map();
+  function detector(kind) {
+    if(!detectors.has(kind)) {
+      const loading=(async()=>{
+        const {FilesetResolver,PoseLandmarker}=await import(sdk+'/vision_bundle.mjs');
+        const files=await FilesetResolver.forVisionTasks(sdk+'/wasm');
+        return PoseLandmarker.createFromOptions(files,{baseOptions:{modelAssetPath:models[kind]||models.lite,delegate:'CPU'},
+          runningMode:'VIDEO',numPoses:1});
+      })();
+      loading.catch(()=>detectors.delete(kind));
+      detectors.set(kind,loading);
+    }
+    return detectors.get(kind);
+  }
+  let lastStamp=0;
   function create(video,canvas,{onFrame,onEnd,onStatus,onPreview=()=>{}}) {
-    let revision=0,stream=null,engine=null,url=null,frame=0;
+    let revision=0,stream=null,url=null,frame=0;
     const draw=canvas.getContext('2d');
     function stop() {
       revision++; cancelAnimationFrame(frame);
       stream?.getTracks().forEach(track=>track.stop());
-      stream=null;engine?.close();engine=null;
+      stream=null;
       video.onended=null;video.onerror=null;video.pause();video.srcObject=null;video.removeAttribute('src');video.load();
       if(url)URL.revokeObjectURL(url);
       url=null;draw.clearRect(0,0,canvas.width,canvas.height);
@@ -16,7 +35,7 @@
     async function openCamera(facing,strict) {
       if(!navigator.mediaDevices?.getUserMedia) throw Object.assign(Error(),{name:'CameraUnavailable'});
       const request=mode=>navigator.mediaDevices.getUserMedia({audio:false,video:{
-        facingMode:mode,width:{ideal:640},height:{ideal:480}
+        facingMode:mode,width:{ideal:960},height:{ideal:720}
       }});
       try{
         const device=await request({exact:facing});
@@ -40,7 +59,7 @@
         return {device,confirmed:actual==='user'||actual==='environment',actual};
       }
     }
-    async function start({file,facing='environment',previous=null}={}) {
+    async function start({file,facing='environment',previous=null,model='lite'}={}) {
       stop();
       const id=++revision;
       try {
@@ -62,22 +81,16 @@
           if(id!==revision)return;
           onPreview({facing:actual||facing,confirmed,fallback});
         }
-        onStatus('載入姿態模型…');
-        let detector;
-        try {
-          const {FilesetResolver,PoseLandmarker}=await import(sdk+'/vision_bundle.mjs');
-          if(id!==revision)return;
-          const config=await FilesetResolver.forVisionTasks(sdk+'/wasm');
-          if(id!==revision)return;
-          detector=await PoseLandmarker.createFromOptions(config,{baseOptions:{modelAssetPath:model,delegate:'CPU'},runningMode:'VIDEO',numPoses:1});
-        }catch{
+        onStatus(detectors.has(model)?'準備姿態辨識…':'第一次使用要下載姿態模型，請稍候…');
+        let engine;
+        try { engine=await detector(model); }
+        catch {
           if(id!==revision)return;
           if(file){onEnd('姿態模型無法載入，請確認網路後再試。');return;}
-          onStatus('相機已開啟，姿態模型載入失敗。可切換鏡頭或稍後重試。');
+          onStatus('相機已開啟，但姿態模型載入失敗。請確認網路，暫停後再繼續可重試。');
           return;
         }
-        if(id!==revision){detector.close();return;}
-        engine=detector;
+        if(id!==revision)return;
         video.onended=()=>onEnd('影片已分析完畢。');
         video.onerror=()=>onEnd('無法讀取影像，請重新開始。');
         if(file){await video.play();if(id===revision)onPreview({file:true});}
@@ -90,16 +103,20 @@
             try {
               const width=video.videoWidth,height=video.videoHeight;
               if(canvas.width!==width||canvas.height!==height){canvas.width=width;canvas.height=height;}
-              const result=engine.detectForVideo(video,now);
+              lastStamp=Math.max(lastStamp+1,Math.round(now));
+              const result=engine.detectForVideo(video,lastStamp);
               const points=(result.landmarks[0]||[]).map(p=>({x:p.x*width,y:p.y*height,visibility:p.visibility}));
-              const view=onFrame(points,file?video.currentTime*1000:now);
+              const view=onFrame(points,file?video.currentTime*1000:now)||{};
               draw.clearRect(0,0,width,height);
-              window.GymDemo?.paint(draw,points,view,width,height);
+              window.GymOverlay?.paint(draw,points,view,width,height);
               draw.beginPath();
               for(const [a,b] of edges)if(window.GymPose.visible(points[a])&&window.GymPose.visible(points[b])){
                 draw.moveTo(points[a].x,points[a].y);draw.lineTo(points[b].x,points[b].y);
               }
-              draw.strokeStyle=view.cue?'#ffd08b':'#abffcf';draw.lineWidth=3;draw.stroke();
+              draw.strokeStyle=view.cue?'#ffd166':'rgba(255,255,255,.92)';draw.lineWidth=Math.max(3,width/220);draw.stroke();
+              for(const i of [11,12,13,14,15,16,23,24,25,26,27,28])if(window.GymPose.visible(points[i])){
+                draw.beginPath();draw.arc(points[i].x,points[i].y,Math.max(3,width/200),0,Math.PI*2);draw.fillStyle='#fff';draw.fill();
+              }
             } catch {onEnd('姿態分析中斷，已保存完成的紀錄。');return;}
           }
           frame=requestAnimationFrame(loop);
@@ -107,7 +124,7 @@
         frame=requestAnimationFrame(loop);
       }catch(error){
         if(id!==revision)return;
-        const errors={NotAllowedError:'相機權限未開放。請在 Safari 的網站設定允許相機。',
+        const errors={NotAllowedError:'相機權限未開放。請到 iPhone 設定 → Safari → 相機，或網址列「大小」選單允許相機。',
           CameraUnavailable:'此瀏覽環境無法使用相機，請用 Safari 直接開啟網站。',
           NotFoundError:'找不到相機，可在訓練選項選擇影片。',
           NotReadableError:'相機目前無法啟動，請關掉其他正在用相機的 App 再試。',
@@ -117,5 +134,5 @@
     }
     return {start,stop,pauseVideo:()=>video.pause(),resumeVideo:()=>video.play()};
   }
-  window.GymCapture={create};
+  window.GymCapture={create,models:Object.keys(models)};
 })();
