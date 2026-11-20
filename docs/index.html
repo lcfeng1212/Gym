@@ -12,16 +12,16 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>GymMonitor｜訓練監測</title>
-<link rel="stylesheet" href="style.css?v=82">
-<script defer src="library.js?v=82"></script>
-<script defer src="lib.js?v=82"></script>
-<script defer src="research.js?v=82"></script>
-<script defer src="observations.js?v=82"></script>
-<script defer src="camera.js?v=82"></script>
-<script defer src="session.js?v=82"></script>
-<script defer src="overlay.js?v=82"></script>
-<script defer src="capture.js?v=82"></script>
-<script defer src="app.js?v=821"></script>
+<link rel="stylesheet" href="style.css?v=83">
+<script defer src="library.js?v=83"></script>
+<script defer src="lib.js?v=83"></script>
+<script defer src="research.js?v=83"></script>
+<script defer src="observations.js?v=83"></script>
+<script defer src="camera.js?v=83"></script>
+<script defer src="session.js?v=83"></script>
+<script defer src="overlay.js?v=83"></script>
+<script defer src="capture.js?v=83"></script>
+<script defer src="app.js?v=83"></script>
 </head>
 <body>
 <header>
@@ -43,13 +43,14 @@
         <div id="metric" class="metric" aria-label="即時數字">—</div>
       </div>
       <div class="controls">
-        <div id="move-input"><span class="label">選擇動作（選填）</span><button id="choose-move" class="plain chooser" type="button"><span id="choose-move-name">自動辨識</span><small id="choose-move-note">划船、下拉、側平舉可計次；未知動作試記時間</small></button></div>
+        <div id="move-input"><span class="label">選擇動作（選填）</span><button id="choose-move" class="plain chooser" type="button"><span id="choose-move-name">自動辨識</span><small id="choose-move-note">只記划船、下拉、側平舉，其他動作請先選擇</small></button></div>
         <div class="main-controls"><button id="start" class="primary" type="button">開始訓練</button><button id="pause" class="plain" type="button" hidden>暫停</button><button id="stop" class="primary stop" type="button" hidden>結束訓練</button></div>
         <details id="options"><summary>訓練選項</summary>
           <div class="option-grid">
             <label class="check"><input id="voice-count" type="checkbox" checked>語音報數</label>
             <label class="check"><input id="voice-cue" type="checkbox" checked>語音提醒動作</label>
             <label class="check"><input id="mirror" type="checkbox" checked>前鏡頭鏡像顯示</label>
+            <label class="check"><input id="unknown-time" type="checkbox">沒選動作時，認不出的動作試記時間（畫面抖動時可能誤記）</label>
             <label>組結束判定（停止動作幾秒算一組結束）<select id="set-end"><option value="4">4 秒</option><option value="6">6 秒（預設）</option><option value="8">8 秒</option><option value="12">12 秒</option></select></label>
             <label>辨識模型<select id="model"><option value="lite">輕量（反應快）</option><option value="full">完整（較準、較耗電）</option></select></label>
             <div class="offline"><button id="offline" class="plain" type="button">下載離線資料</button><small id="offline-state">檢查中…</small></div>
@@ -78,7 +79,7 @@
   </div>
   <button id="retry-save" class="plain" type="button" hidden>重試儲存</button>
   <p id="notice" class="subtle" role="status">影像在裝置端分析，紀錄儲存在此瀏覽器。</p>
-  <p class="subtle version">GymMonitor v8.2 · 2026-11-20 · 動作資料：Free Exercise DB（公有領域）</p>
+  <p class="subtle version">GymMonitor v8.3 · 2026-11-20 · 動作資料：Free Exercise DB（公有領域）</p>
 </main>
 <datalist id="move-options"></datalist>
 

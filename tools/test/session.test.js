@@ -45,6 +45,8 @@ function run(sessionOptions, frames) {
   });
   let at = 0;
   for (const points of frames) { session.update(points, at); at += FRAME; }
+  // 一定先「結束訓練」再檢查：還沒結束的組也要被檢查到（v8.2 走動誤記曾因此漏測）
+  session.finish();
   return { sets, rests, reps, session, at };
 }
 const hold = (points, n) => Array.from({ length: n }, () => points);
@@ -165,7 +167,7 @@ test('暫停期間不算活動時間', () => {
   const feed = list => { for (const p of list) { session.update(p, at); at += FRAME; } };
   feed(rowReps(2));
   session.pause(at); at += 30000; session.resume(at);
-  feed(rowReps(2)); feed(still(90));
+  feed(rowReps(2)); feed(still(90)); session.finish();
   assert.strictEqual(sets.length, 1);
   assert.strictEqual(sets[0].reps, 4);
   assert.ok(sets[0].durationMs < 10000, '活動時長不應含 30 秒暫停：' + sets[0].durationMs);
@@ -297,7 +299,48 @@ test('休息中暫停：休息時間照實際時間算（含暫停）', () => {
   const feed = list => { for (const p of list) { session.update(p, at); at += FRAME; } };
   feed([...rowReps(3), ...still(90)]);
   session.pause(at); at += 60000; session.resume(at);
-  feed([...rowReps(3), ...still(10)]);
+  feed([...rowReps(3), ...still(10)]); session.finish();
   assert.strictEqual(rests.length, 1);
   assert.ok(rests[0] > 60000, '休息 ' + rests[0]);
+});
+
+// ── v8.3：「認不出的動作試記時間」開關 ─────────────────
+// 臉拉類動作（不是自動辨識三種）：手在肩高前後拉
+const faceFar = () => pose({ s: [300, 300], h: [300, 500], k: [420, 500], a: [500, 560], e: [380, 290], w: [470, 280] });
+const faceNear = () => pose({ s: [300, 300], h: [300, 500], k: [420, 500], a: [500, 560], e: [250, 270], w: [330, 250] });
+const facePulls = n => { const f = []; for (let i = 0; i < n; i++) f.push(...hold(faceNear(), 5), ...hold(faceFar(), 5)); return f; };
+const session3 = [...facePulls(38), ...hold(faceFar(), 750), ...facePulls(38), ...hold(faceFar(), 100)];
+
+test('開關預設關閉：沒選動作做臉拉 30 秒×2，不產生紀錄', () => {
+  assert.strictEqual(run({}, session3).sets.length, 0);
+});
+
+test('開關開啟、畫面乾淨：臉拉 30 秒 → 休息 60 秒 → 臉拉 30 秒，記兩組時間與休息', () => {
+  const { sets, rests } = run({ unknownTime: true }, session3);
+  assert.strictEqual(sets.length, 2);
+  for (const set of sets) {
+    assert.strictEqual(set.name, '動作無法確認');
+    assert.strictEqual(set.reps, null);
+    assert.ok(Math.abs(set.durationMs - 30000) < 3000, '時長 ' + set.durationMs);
+  }
+  assert.ok(Math.abs(rests[0][1] - 60000) < 3000, '休息 ' + rests[0][1]);
+});
+
+test('開關開啟：單純走位置（身體平移、手不動）不開組', () => {
+  const frames = [];
+  for (let i = 0; i < 250; i++) { const dx = (i % 12) * 12; frames.push(pose({ s: [300 + dx, 300], h: [300 + dx, 500], k: [320 + dx, 640], a: [320 + dx, 780], e: [305 + dx, 400], w: [310 + dx, 480] })); }
+  assert.strictEqual(run({ unknownTime: true }, frames).sets.length, 0);
+});
+
+test('開關預設關閉：畫面抖動、組間走動擺手，結束訓練後也不產生紀錄', () => {
+  seed = 5;
+  const still30 = Array.from({ length: 375 }, () => jitter(rowExtended(), 10));
+  assert.strictEqual(run({}, still30).sets.length, 0);
+  const walk = [];
+  for (let i = 0; i < 250; i++) { const dx = (i % 12) * 12, sw = Math.sin(i / 3) * 60; walk.push(pose({ s: [300 + dx, 300], h: [300 + dx, 500], k: [320 + dx, 640], a: [320 + dx, 780], e: [300 + dx + sw * .5, 400], w: [300 + dx + sw, 480] })); }
+  assert.strictEqual(run({}, walk).sets.length, 0);
+});
+
+test('指定動作時不受開關影響：划船 5 下仍記 5 下', () => {
+  assert.strictEqual(run({ hint: '滑輪坐姿划船', unknownTime: true }, [...rowReps(5), ...still(90)]).sets[0]?.reps, 5);
 });

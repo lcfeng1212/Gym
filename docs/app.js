@@ -10,7 +10,7 @@
 
   // ── 設定 ─────────────────────────────────────────
   const settingsKey='gymmonitor.settings.1';
-  const settings={count:true,cue:true,mirror:true,model:'lite',facing:'environment',setEnd:6};
+  const settings={count:true,cue:true,mirror:true,model:'lite',facing:'environment',setEnd:6,unknownTime:false};
   try{Object.assign(settings,JSON.parse(localStorage.getItem(settingsKey)||'{}'));}catch{}
   const saveSettings=()=>{try{localStorage.setItem(settingsKey,JSON.stringify(settings));}catch{}};
   el('voice-count').checked=settings.count;el('voice-cue').checked=settings.cue;el('mirror').checked=settings.mirror;
@@ -21,6 +21,8 @@
   el('model').onchange=e=>{settings.model=e.target.value;saveSettings();};
   el('set-end').value=String(settings.setEnd);if(!el('set-end').value){settings.setEnd=6;el('set-end').value='6';}
   el('set-end').onchange=e=>{settings.setEnd=Number(e.target.value)||6;saveSettings();};
+  el('unknown-time').checked=Boolean(settings.unknownTime);
+  el('unknown-time').onchange=e=>{settings.unknownTime=e.target.checked;saveSettings();describeAuto();};
 
   // ── 紀錄 ─────────────────────────────────────────
   const key='gymmonitor.web.logs.1';
@@ -42,7 +44,7 @@
       else localStorage.removeItem(pendingKey);
     } catch {}
   }
-  function flushPending() {
+  function flushPending({announce=true}={}) {
     if(!pending.size)return true;
     const saved=change(rows=>{
       const ids=new Set(rows.map(row=>row.id));
@@ -51,10 +53,32 @@
     if(saved){
       pending.clear();
       journalPending();
-      put('notice','待儲存組別已儲存。');
+      if(announce)put('notice','待儲存組別已儲存。');
     }
     refreshPending();
     return saved;
+  }
+  // 已存＋待存（最新在前）；待存組也能在上一組卡片與紀錄裡修改
+  function allRows(){
+    const ids=new Set(records.map(row=>row.id));
+    return [...pending.values()].reverse().filter(row=>!ids.has(row.id)).concat(records);
+  }
+  const findRow=id=>records.find(row=>row.id===id)||pending.get(id)||null;
+  function updateRow(id,transform){
+    if(pending.has(id)&&!records.some(row=>row.id===id)){
+      pending.set(id,transform(pending.get(id)));
+      journalPending();flushPending({announce:false});refreshPending();
+      renderLast();if(el('history').open)renderHistory();
+      return true;
+    }
+    return change(rows=>rows.map(row=>row.id===id?transform(row):row));
+  }
+  function removeRow(id){
+    if(pending.has(id)&&!records.some(row=>row.id===id)){
+      pending.delete(id);journalPending();refreshPending();renderLast();if(el('history').open)renderHistory();
+      return true;
+    }
+    return change(rows=>rows.filter(row=>row.id!==id));
   }
   function readRecords() {
     const result=JSON.parse(localStorage.getItem(key)||'[]');
@@ -77,7 +101,13 @@
   };
   for(const item of GymLibrary.items)el('move-options').append(new Option(item.name));
   for(const name of GymSession.timed)el('move-options').append(new Option(name));
-  put('auto-scope','不選動作時，可自動辨識：'+GymSession.autoMoves.join('、')+'。持續活動但無法辨識時會試記時間；動作庫標「可計次」的會自動數次數，其餘只記時間。正面拍時，彎舉、側平舉、腿彎舉、腿伸展的交替動作會左右分開計次。');
+  const autoNote=()=>settings.unknownTime?'划船、下拉、側平舉可計次；認不出的動作試記時間':'只記划船、下拉、側平舉，其他動作請先選擇';
+  function describeAuto(){
+    put('auto-scope','不選動作時，會自動辨識並計次：'+GymSession.autoMoves.join('、')+'。'+
+      (settings.unknownTime?'已開啟「認不出的動作試記時間」：持續活動 3 秒以上會記成「動作無法確認」；畫面抖動或組間走動時可能誤記，請事後核對。':'其他動作請先選擇，否則不會記錄（可在上方開啟「認不出的動作試記時間」）。')+
+      '動作庫標「可計次」的會自動數次數，其餘只記時間。正面拍時，彎舉、側平舉、腿彎舉、腿伸展的交替動作會左右分開計次。');
+    if(!selectedMove)put('choose-move-note',autoNote());
+  }
 
   // ── 語音 ─────────────────────────────────────────
   const speech=window.speechSynthesis;
@@ -164,7 +194,7 @@
     el('lens-controls').hidden=usingVideo;el('switch-lens').disabled=!usingVideo;
     hint=selectedMove;
     workoutId=crypto.randomUUID();latestId=null;renderLast();
-    session=GymSession.create({hint,setEndMs:settings.setEnd*1000,onSet:recordSet,onRest:recordRest,onRep});
+    session=GymSession.create({hint,setEndMs:settings.setEnd*1000,unknownTime:settings.unknownTime,onSet:recordSet,onRest:recordRest,onRep});
     el('start').hidden=true;el('stop').hidden=false;el('options').hidden=true;el('legend').hidden=false;
     put('state',file?'準備影片分析…':'正開啟相機…');put('move',hint||'自動辨識');
     put('metric','—');put('cue','');put('notice','影像在裝置端分析，紀錄儲存在此瀏覽器。');
@@ -235,10 +265,11 @@
     const row={id,workoutId,name,unit:reps===null?'minutes':'reps',amount:reps??durationMs/60000,
       durationMs,restMs:null,trackingInterrupted,weight:null,note:'',date:times.startTime||now,recordedAt:now,
       ...times,...(cue?{analysis:cue,analysisMove:name}:{})};
+    const announce=pending.size>0; // 之前就有沒存成功的，才提示「已補存」
     pending.set(id,row);
     latestId=id;
     restSpoken=0;
-    if(!flushPending())journalPending();
+    if(!flushPending({announce}))journalPending();
     renderLast();
     if(settings.count)say('這組完成'+(reps?'，'+reps+'下':'')+'，開始休息');
     return id;
@@ -247,13 +278,13 @@
     if(!id)return;
     if(pending.has(id)){
       pending.set(id,{...pending.get(id),restMs});
-      if(!flushPending())journalPending();
+      if(!flushPending({announce:pending.size>1}))journalPending();
       return;
     }
     change(rows=>rows.map(row=>row.id===id?{...row,restMs}:row));
   }
   function setIndex(name,id) {
-    const completed=records.filter(r=>r.workoutId===workoutId&&r.name===name);
+    const completed=allRows().filter(r=>r.workoutId===workoutId&&r.name===name);
     return id?completed.slice(completed.findIndex(row=>row.id===id)).length:completed.length+1;
   }
   function renderLive(view,points) {
@@ -283,7 +314,7 @@
     return GymPose.supported(row.name)?time+'（未數到次數，請核對）':time;
   }
   function renderLast() {
-    const row=records.find(r=>r.id===latestId);
+    const row=findRow(latestId);
     put('last-move',row?.name||'尚無本次紀錄');
     put('last-detail',row?'第 '+setIndex(row.name,row.id)+' 組　·　'+description(row)+(row.trackingInterrupted?'　·　有遮擋，請核對':''):'');
     el('edit-last').hidden=!row;
@@ -303,13 +334,14 @@
     put('same-weight',prior===null?'':'同上一組 · '+prior+' kg');
   }
   function previousWeight(row) {
-    const index=records.findIndex(r=>r.id===row.id);
-    const previous=records.slice(index+1).find(r=>r.workoutId===row.workoutId&&r.name===row.name);
+    const rows=allRows();
+    const index=rows.findIndex(r=>r.id===row.id);
+    const previous=rows.slice(index+1).find(r=>r.workoutId===row.workoutId&&r.name===row.name);
     return Number.isFinite(previous?.weight)&&previous.weight>=0?previous.weight:null;
   }
   function reviseLast(transform){
     const id=latestId;
-    if(id)change(rows=>rows.map(row=>row.id===id?transform(row):row));
+    if(id)updateRow(id,transform);
   }
   function adjustRep(delta){
     reviseLast(row=>row.unit==='reps'?{...row,amount:Math.max(1,Math.min(999,row.amount+delta))}:row);
@@ -322,17 +354,17 @@
     if(!id||!field.validity.valid)return;
     const weight=field.value===''?null:field.valueAsNumber;
     if(weight!==null&&(!Number.isFinite(weight)||weight<0))return;
-    change(rows=>rows.map(row=>row.id===id?{...row,weight}:row));
+    updateRow(id,row=>({...row,weight}));
   };
   el('same-weight').onclick=()=>{
-    const row=records.find(r=>r.id===latestId);
+    const row=findRow(latestId);
     const weight=row?previousWeight(row):null;
     if(weight!==null)reviseLast(record=>({...record,weight}));
   };
 
   // ── 修正／新增紀錄 ───────────────────────────────
   function edit(id){
-    const row=records.find(r=>r.id===id);
+    const row=findRow(id);
     if(id&&!row)return;
     editing=id;
     deleteArmed=null;
@@ -355,7 +387,7 @@
   el('edit-delete').onclick=()=>{
     const id=editing;
     if(!id||!confirmDelete())return;
-    if(change(rows=>rows.filter(row=>row.id!==id))){if(latestId===id)latestId=null;renderLast();el('editor').close();}
+    if(removeRow(id)){if(latestId===id)latestId=null;renderLast();el('editor').close();}
   };
   let deleteArmed=null;
   function confirmDelete(){
@@ -366,7 +398,7 @@
   }
   el('edit-form').onsubmit=event=>{
     event.preventDefault();
-    const row=records.find(r=>r.id===editing);
+    const row=findRow(editing);
     if(editing&&!row)return;
     const name=el('edit-name').value.trim();
     if(!name){put('edit-error','請輸入動作名稱。');return;}
@@ -376,8 +408,8 @@
     if(reps===null&&!minutes){put('edit-error',row?'這筆原始紀錄沒有時長，請保留次數。':'請輸入次數或時長。');return;}
     const details={name,unit:reps===null?'minutes':'reps',amount:reps??minutes,
       weight:el('edit-weight').value===''?null:Number(el('edit-weight').value),note:el('edit-note').value.trim()};
-    if(!change(rows=>row?rows.map(r=>r.id===editing?{...r,...details}:r):
-      [{id:crypto.randomUUID(),workoutId:session?workoutId:crypto.randomUUID(),source:'manual',date:new Date().toISOString(),...details},...rows])){
+    if(!(row?updateRow(editing,r=>({...r,...details})):change(rows=>
+      [{id:crypto.randomUUID(),workoutId:session?workoutId:crypto.randomUUID(),source:'manual',date:new Date().toISOString(),...details},...rows]))){
       put('edit-error','儲存失敗。');return;
     }
     el('editor').close();
@@ -386,18 +418,21 @@
   // ── 紀錄清單（依日期分組，可複製給 Claude 寫日曆）────────
   const dayOf=iso=>new Date(iso).toLocaleDateString('sv-SE',tz);
   const timeOf=iso=>new Date(iso).toLocaleTimeString('zh-TW',{...tz,hour:'2-digit',minute:'2-digit',hour12:false});
-  function summary(day,dayRows=records.filter(r=>dayOf(r.date)===day)){
+  function summary(day,dayRows=allRows().filter(r=>dayOf(r.date)===day)){
     const rows=[...dayRows].sort((a,b)=>Date.parse(a.date)-Date.parse(b.date));
     const counts=new Map();
     const lines=rows.map(r=>{
       const group=JSON.stringify([r.workoutId||r.id,r.name]);
       const n=(counts.get(group)||0)+1;counts.set(group,n);
+      // v8.1 以前的紀錄：date＝結束時間，開始＝結束減活動時長（可計算值）
+      const legacy=!r.startTime&&!r.source&&r.durationMs>0&&Number.isFinite(Date.parse(r.date));
       const span=Number.isFinite(Date.parse(r.startTime))&&Number.isFinite(Date.parse(r.endTime))?
-        timeOf(r.startTime)+'–'+timeOf(r.endTime):'起訖未填';
+        timeOf(r.startTime)+'–'+timeOf(r.endTime):
+        legacy?timeOf(new Date(Date.parse(r.date)-r.durationMs).toISOString())+'–'+timeOf(r.date)+'（推算）':'起訖未填';
       return span+'　'+r.name+'　第'+n+'組　'+description(r)+(r.analysis&&(!r.analysisMove||r.analysisMove===r.name)?'　觀察：'+r.analysis:'')+(r.weight==null?'':'　'+r.weight+' kg')+
         (r.restMs==null?'':'　休息 '+duration(r.restMs))+(r.trackingInterrupted?'　（有遮擋）':'')+(r.note?'　備註：'+r.note:'');
     });
-    return 'GymMonitor 訓練紀錄｜'+day+'\n已記錄的起訖時間以台北時間顯示\n'+lines.join('\n');
+    return 'GymMonitor 訓練紀錄｜'+day+'\n起訖時間為台北時間；標「推算」者＝結束時間減活動時長（可計算值）\n'+lines.join('\n');
   }
   async function copyText(text,button){
     try{await navigator.clipboard.writeText(text);button.textContent='已複製';}
@@ -409,9 +444,10 @@
   }
   function renderHistory(){
     const list=el('records');list.replaceChildren();
-    if(!records.length){list.textContent='尚無訓練紀錄。';return;}
+    const rows=allRows();
+    if(!rows.length){list.textContent='尚無訓練紀錄。';return;}
     let day='';
-    for(const row of records) {
+    for(const row of rows) {
       const rowDay=dayOf(row.date);
       if(rowDay!==day){
         day=rowDay;
@@ -420,7 +456,7 @@
         list.append(make('div',{className:'day'},make('h3',{textContent:rowDay}),copy));
       }
       const name=make('strong',{textContent:row.name+'　'+description(row)+(row.weight==null?'':'　'+row.weight+' kg')});
-      const details=make('small',{textContent:timeOf(row.date)+(row.restMs==null?'':'　休息 '+duration(row.restMs))+(row.trackingInterrupted?'　追蹤中斷':'')+(row.note?'　'+row.note:'')});
+      const details=make('small',{textContent:(pending.has(row.id)&&!records.some(r=>r.id===row.id)?'待儲存　':'')+timeOf(row.date)+(row.restMs==null?'':'　休息 '+duration(row.restMs))+(row.trackingInterrupted?'　追蹤中斷':'')+(row.note?'　'+row.note:'')});
       const fix=make('button',{className:'plain',type:'button',textContent:'修正'});
       fix.onclick=()=>{el('history').close();edit(row.id);};
       const weightButton=make('button',{className:'plain',type:'button',textContent:'改重量'});
@@ -429,7 +465,7 @@
     }
   }
   function editWeight(id){
-    const row=records.find(r=>r.id===id);
+    const row=findRow(id);
     if(!row)return;
     weightRowId=id;
     put('weight-context',row.name+' · '+description(row)+' · '+new Date(row.date).toLocaleTimeString('zh-TW',tz));
@@ -444,7 +480,7 @@
       put('weight-error','請輸入有效重量，或清空重量。');return;
     }
     const id=weightRowId;
-    if(id&&change(rows=>rows.map(row=>row.id===id?{...row,weight}:row)))el('weight-editor').close();
+    if(id&&updateRow(id,row=>({...row,weight})))el('weight-editor').close();
     else put('weight-error','重量未儲存，請再試一次。');
   };
 
@@ -459,7 +495,7 @@
   }
   function recentItems(){
     const seen=new Set(),list=[];
-    for(const row of records){
+    for(const row of allRows()){
       if(seen.has(row.name))continue;seen.add(row.name);
       const item=GymLibrary.get(row.name);
       list.push(item||{name:row.name,parts:[],aliases:[],track:GymPose.supported(row.name),custom:true});
@@ -556,7 +592,7 @@
     selectedMove=name;
     const item=GymLibrary.get(name);
     put('choose-move-name',name||'自動辨識');
-    put('choose-move-note',!name?'划船、下拉、側平舉可計次；未知動作試記時間':item?.track?'可自動計次（'+item.track+'規則）':'這個動作只記時間與組數');
+    put('choose-move-note',!name?autoNote():item?.track?'可自動計次（'+item.track+'規則）':'這個動作只記時間與組數');
     put('move',name||'自動辨識');showMuscle(name);
     el('picker').close();el('detail').open&&el('detail').close();
   }
@@ -762,5 +798,6 @@
   el('model').addEventListener('change',()=>void offlineStatus());
   void offlineStatus();
 
+  describeAuto();
   window.GymApp={openPicker,showDetail,choose,state:()=>({selectedMove,session:Boolean(session),paused,lastView})};
 })();

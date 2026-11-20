@@ -143,10 +143,11 @@
     };
   }
 
-  function create({hint='',setEndMs=quietMs,onSet=()=>{},onRest=()=>{},onRep=()=>{}}={}) {
+  // unknownTime：沒選動作時，持續活動但認不出動作也試記時間（預設關；畫面抖動時可能誤記）
+  function create({hint='',setEndMs=quietMs,unknownTime=false,onSet=()=>{},onRest=()=>{},onRep=()=>{}}={}) {
     const tracker=exerciseTracker(hint), motion=motionTracker(), smooth=smoother();
     const timedMode=Boolean(hint&&!window.GymPose.supported(hint));
-    const unclassified=hint?null:motionTracker(true);
+    const unclassified=hint||!unknownTime?null:motionTracker(true);
     let current=null, rest=null, lastTracked=null, lostAt=null, view={phase:'ready', tracking:false};
     let pausedAt=null, pausedTotal=0;
     function pause(at) {
