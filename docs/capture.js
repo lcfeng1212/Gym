@@ -134,5 +134,7 @@
     }
     return {start,stop,pauseVideo:()=>video.pause(),resumeVideo:()=>video.play()};
   }
-  window.GymCapture={create,models:Object.keys(models)};
+  // 下載離線資料：先把姿態程式與模型載入一次（離線快取會存起來）
+  const preload=kind=>detector(kind);
+  window.GymCapture={create,preload,models:Object.keys(models),modelUrl:kind=>models[kind]||models.lite,sdk};
 })();

@@ -10,7 +10,7 @@
 
   // ── 設定 ─────────────────────────────────────────
   const settingsKey='gymmonitor.settings.1';
-  const settings={count:true,cue:true,mirror:true,model:'lite',facing:'environment'};
+  const settings={count:true,cue:true,mirror:true,model:'lite',facing:'environment',setEnd:6};
   try{Object.assign(settings,JSON.parse(localStorage.getItem(settingsKey)||'{}'));}catch{}
   const saveSettings=()=>{try{localStorage.setItem(settingsKey,JSON.stringify(settings));}catch{}};
   el('voice-count').checked=settings.count;el('voice-cue').checked=settings.cue;el('mirror').checked=settings.mirror;
@@ -19,6 +19,8 @@
   el('voice-cue').onchange=e=>{settings.cue=e.target.checked;saveSettings();};
   el('mirror').onchange=e=>{settings.mirror=e.target.checked;saveSettings();applyMirror();};
   el('model').onchange=e=>{settings.model=e.target.value;saveSettings();};
+  el('set-end').value=String(settings.setEnd);if(!el('set-end').value){settings.setEnd=6;el('set-end').value='6';}
+  el('set-end').onchange=e=>{settings.setEnd=Number(e.target.value)||6;saveSettings();};
 
   // ── 紀錄 ─────────────────────────────────────────
   const key='gymmonitor.web.logs.1';
@@ -45,7 +47,7 @@
   };
   for(const item of GymLibrary.items)el('move-options').append(new Option(item.name));
   for(const name of GymSession.timed)el('move-options').append(new Option(name));
-  put('auto-scope','不選動作時，會自動辨識：'+GymSession.autoMoves.join('、')+'。其他動作請先選擇；動作庫標「可計次」的會自動數次數，其餘只記時間。');
+  put('auto-scope','不選動作時，只會自動辨識並記錄：'+GymSession.autoMoves.join('、')+'。其他動作請先選擇，否則不會記錄；動作庫標「可計次」的會自動數次數，其餘只記時間。正面拍時，彎舉、側平舉、腿彎舉、腿伸展的交替動作會左右分開計次。');
 
   // ── 語音 ─────────────────────────────────────────
   const speech=window.speechSynthesis;
@@ -55,12 +57,16 @@
     voice=voices.find(v=>/zh[-_]TW/i.test(v.lang))||voices.find(v=>/zh[-_](HK|Hant)/i.test(v.lang))||voices.find(v=>/^zh/i.test(v.lang))||null;
   }
   if(speech){pickVoice();speech.onvoiceschanged=pickVoice;}
-  function say(text,{interrupt=false}={}){
+  // 報數只會取代還沒念完的上一個報數；動作提醒、組完成提示不會被打斷
+  let speakingKind='';
+  function say(text,{kind='info'}={}){
     if(!speech||!text)return;
     try{
-      if(interrupt)speech.cancel();
+      if(kind==='count'&&speakingKind==='count'&&speech.speaking)speech.cancel();
       const u=new SpeechSynthesisUtterance(text);
       u.lang=voice?.lang||'zh-TW';if(voice)u.voice=voice;u.rate=1.1;
+      u.onstart=()=>{speakingKind=kind;};u.onend=()=>{if(!speech.pending)speakingKind='';};
+      speakingKind=kind;
       speech.speak(u);
     }catch{}
   }
@@ -128,7 +134,7 @@
     el('lens-controls').hidden=usingVideo;el('switch-lens').disabled=!usingVideo;
     hint=selectedMove;
     workoutId=crypto.randomUUID();latestId=null;renderLast();
-    session=GymSession.create({hint,onSet:recordSet,onRest:recordRest,onRep});
+    session=GymSession.create({hint,setEndMs:settings.setEnd*1000,onSet:recordSet,onRest:recordRest,onRep});
     el('start').hidden=true;el('stop').hidden=false;el('options').hidden=true;el('legend').hidden=false;
     put('state',file?'準備影片分析…':'正開啟相機…');put('move',hint||'自動辨識');
     put('metric','—');put('cue','');put('notice','影像在裝置端分析，紀錄儲存在此瀏覽器。');
@@ -186,7 +192,7 @@
     put('state',message);put('move',selectedMove||'自動辨識');put('metric','—');put('cue','');
   }
   function onRep(move,count){
-    if(settings.count)say(String(count),{interrupt:true});
+    if(settings.count)say(String(count),{kind:'count'});
   }
   function recordSet({name,reps,durationMs,trackingInterrupted}) {
     const id=crypto.randomUUID();
@@ -218,7 +224,7 @@
     put('cue',text);
     el('cue').classList.toggle('warn',Boolean(tracking&&cue));
     if(tracking&&cue&&settings.cue&&(cue!==lastCue||performance.now()-lastCueAt>6000)&&performance.now()-lastCueAt>2500){
-      lastCue=cue;lastCueAt=performance.now();say(cue);
+      lastCue=cue;lastCueAt=performance.now();say(cue,{kind:'cue'});
     }
     if(phase==='rest'&&settings.count){
       const minute=Math.floor(restMs/60000);
@@ -228,7 +234,9 @@
     lastView=view;
   }
   function description(row) {
-    return row.unit==='reps'?row.amount+' 下':row.durationMs?duration(row.durationMs):Number(row.amount.toFixed(2))+' 分鐘';
+    const time=row.durationMs?duration(row.durationMs):Number(row.amount.toFixed(2))+' 分鐘';
+    if(row.unit==='reps')return row.amount+' 下';
+    return GymPose.supported(row.name)?time+'（未數到次數，請核對）':time;
   }
   function renderLast() {
     const row=records.find(r=>r.id===latestId);
@@ -499,7 +507,7 @@
     selectedMove=name;
     const item=GymLibrary.get(name);
     put('choose-move-name',name||'自動辨識');
-    put('choose-move-note',!name?'划船、下拉、側平舉會自動辨識':item?.track?'可自動計次（'+item.track+'規則）':'這個動作只記時間與組數');
+    put('choose-move-note',!name?'只記划船、下拉、側平舉，其他動作請先選擇':item?.track?'可自動計次（'+item.track+'規則）':'這個動作只記時間與組數');
     put('move',name||'自動辨識');showMuscle(name);
     el('picker').close();el('detail').open&&el('detail').close();
   }
@@ -544,11 +552,13 @@
     put('d-aliases',[others.length?'也稱：'+others.join('、'):'',english.length?'英文：'+english.join('／'):''].filter(Boolean).join('　'));
     el('d-badges').replaceChildren(...(item?[...item.parts.map(p=>make('span',{className:'tag',textContent:p})),...badge(item),
       item.track?null:make('span',{className:'tag quiet',textContent:'只記時間'})].filter(Boolean):[]));
-    el('d-photos').hidden=!item?.fedb;
-    if(item?.fedb){el('d-img0').src=GymLibrary.image(item,0);el('d-img1').src=GymLibrary.image(item,1);}
-    const muscles=GymLibrary.muscles(item);
+    const photo=GymLibrary.photoId(item);
+    el('d-photos').hidden=!photo;
+    if(photo){el('d-img0').src=GymLibrary.image(item,0);el('d-img1').src=GymLibrary.image(item,1);}
+    el('d-similar').hidden=!item?.similar;
+    if(item?.similar)put('d-similar','照片、肌群與原文步驟取自相近動作「'+(window.GYM_LIBRARY.items.find(r=>r.f===item.similar)?.n||item.similar)+'」，器材或握法可能和你做的不同。');
     el('d-facts').replaceChildren(
-      ...fact('主要肌群',item?.primary.length?item.primary.map(GymLibrary.muscleLabel).join('、'):''),
+      ...fact('主要肌群',item?.primary.length?item.primary.map(GymLibrary.muscleLabel).join('、')+(item.similar?'（相近動作）':''):''),
       ...fact('協同肌群',item?.secondary.length?item.secondary.map(GymLibrary.muscleLabel).join('、'):''),
       ...fact('器材',item?.equipment),...fact('難度',item?.level),...fact('類型',item?.type),
       ...fact('計次方式',item?.track?'依「'+item.track+'」關節角度計次（實驗）':'只記時間與組數'));
@@ -558,11 +568,10 @@
     const observation=window.GYM_OBSERVATIONS?.[detailName]||window.GYM_OBSERVATIONS?.[name];
     el('d-camera').hidden=!observation;
     if(observation)put('d-camera-text','建議從'+observation[0]+'拍，讓'+observation[1]+'入鏡。可留意：'+observation[2]);
-    el('d-steps').hidden=!item?.fedb;el('d-steps').open=false;el('d-step-list').replaceChildren();
-    const nothing=!item?.fedb&&!guide;
+    el('d-steps').hidden=!photo;el('d-steps').open=false;el('d-step-list').replaceChildren();
+    const nothing=!photo&&!guide;
     el('d-empty').hidden=!nothing;
     put('d-empty',item?.screenshot?'這是你手錶 App 清單中的動作名稱，免費資料庫沒有對應的照片與說明。':'免費資料庫沒有對應的照片與說明。');
-    void muscles;
     const canUse=!session||pickerMode==='rename';
     el('d-use').hidden=!canUse;
     put('d-use',pickerMode==='rename'?'用這個名稱':'選用這個動作');
@@ -594,8 +603,10 @@
     if(!item)return;
     const {primary,secondary}=GymLibrary.muscles(item);
     put('muscle-title',item.name);
-    el('demo-photos').hidden=!item.fedb;
-    if(item.fedb){el('demo-start').src=GymLibrary.image(item,0);el('demo-end').src=GymLibrary.image(item,1);}
+    const photo=GymLibrary.photoId(item);
+    el('demo-photos').hidden=!photo;
+    if(photo){el('demo-start').src=GymLibrary.image(item,0);el('demo-end').src=GymLibrary.image(item,1);}
+    el('similar-note').hidden=!item.similar;
     put('primary-muscle',primary.length?'紅色・主要：'+primary.map(GymLibrary.muscleLabel).join('、')+(item.primary.length?'':'（依部位推估）'):'');
     put('secondary-muscle',secondary.length?'藍色・協同：'+secondary.map(GymLibrary.muscleLabel).join('、'):'');
     put('setup',guide?.cue||'');
@@ -644,5 +655,39 @@
     }catch{put('importmsg','匯入失敗。請使用 GymMonitor 的 JSON 備份。');}
     event.target.value='';
   };
+  // ── 離線快取 ─────────────────────────────────────
+  // 加入主畫面後，iPhone 才不會在 7 天沒開時清掉快取與紀錄
+  const secure=location.protocol==='https:'||location.hostname==='localhost';
+  const offlineReady=('serviceWorker' in navigator)&&('caches' in window)&&secure;
+  if(offlineReady)navigator.serviceWorker.register('sw.js').catch(()=>{});
+  async function offlineStatus(){
+    if(!offlineReady){put('offline-state',secure?'此瀏覽器不支援離線使用':'離線快取只在正式網址（https）啟用');el('offline').disabled=true;return;}
+    try{
+      const model=await caches.match(GymCapture.modelUrl(settings.model));
+      const sdk=await caches.match(GymCapture.sdk+'/vision_bundle.mjs');
+      put('offline-state',model&&sdk?'已下載（'+(settings.model==='full'?'完整':'輕量')+'模型），沒網路也能用':'尚未下載，約 15–19 MB');
+    }catch{put('offline-state','無法確認離線資料狀態');}
+  }
+  el('offline').onclick=async()=>{
+    const button=el('offline');button.disabled=true;put('offline-state','下載中…請保持網路連線');
+    try{
+      if(offlineReady)await navigator.serviceWorker.ready;
+      try{await navigator.storage?.persist?.();}catch{}
+      await GymCapture.preload(settings.model);
+      await fetch('fedb-steps.json').catch(()=>{});
+      // 你日曆常做動作的照片
+      const urls=GymLibrary.mine().filter(i=>GymLibrary.photoId(i)).flatMap(i=>[GymLibrary.image(i,0),GymLibrary.image(i,1)]);
+      let done=0;
+      for(let i=0;i<urls.length;i+=6){
+        await Promise.all(urls.slice(i,i+6).map(u=>fetch(u,{mode:'cors'}).then(()=>done++).catch(()=>{})));
+        put('offline-state','下載照片 '+done+'／'+urls.length);
+      }
+      await offlineStatus();
+    }catch{put('offline-state','下載失敗，請確認網路後再試。');}
+    button.disabled=false;
+  };
+  el('model').addEventListener('change',()=>void offlineStatus());
+  void offlineStatus();
+
   window.GymApp={openPicker,showDetail,choose,state:()=>({selectedMove,session:Boolean(session),paused,lastView})};
 })();

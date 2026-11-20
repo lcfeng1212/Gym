@@ -42,7 +42,9 @@
     if (![s,h].every(visible)) return NaN;
     return Math.atan2(s.x-h.x, h.y-s.y)*180/Math.PI;
   }
-  function sideOrder(points, preferSide) {
+  function sideOrder(points, preferSide, only) {
+    if (only===11) return [sides[0]];
+    if (only===12) return [sides[1]];
     const score = side => side.reduce((sum,i)=>sum+(points[i]?.visibility ?? (points[i]?1:0)),0);
     const order = score(sides[1])>score(sides[0]) ? [sides[1],sides[0]] : [sides[0],sides[1]];
     if (preferSide===12) return [sides[1],sides[0]];
@@ -55,15 +57,24 @@
     const {s,h,k,a,e,w,knee,elbow} = p;
     switch (move) {
       case "腿推": return [knee,110,145,false];
-      case "臀推": return [angle(s,h,k),150,135,true];
+      case "臀推": return [angle(s,h,k),145,130,true];
       case "引體向上": return [elbow,100,145,false];
       case "側平舉": return [angle(h,s,e),65,35,true];
       default: return null;
     }
   }
 
-  function sample(points, selection, preferSide) {
-    for (const side of sideOrder(points, preferSide)) {
+  // 正面拍（兩肩左右分開明顯、兩側關節都清楚）：交替動作可左右分開計次
+  function frontal(points) {
+    const [ls,rs,lh,rh]=[11,12,23,24].map(i=>points[i]);
+    if (![ls,rs,lh,rh].every(p=>p && (p.visibility ?? 1) >= .8)) return false;
+    const torso=Math.hypot((ls.x+rs.x)/2-(lh.x+rh.x)/2,(ls.y+rs.y)/2-(lh.y+rh.y)/2);
+    return torso>20 && Math.abs(ls.x-rs.x)>torso*.45;
+  }
+  // 超過門檻 10 度以上視為明確到位，快速動作只需 1 個畫面
+  const MARGIN=10;
+  function sample(points, selection, preferSide, only) {
+    for (const side of sideOrder(points, preferSide, only)) {
       const [s,h,k,a,e,w]=side.map(i=>points[i]);
       if (![s,h].every(visible)) continue;
       const horizontal=Math.abs(s.x-h.x)>Math.abs(s.y-h.y)*1.35;
@@ -81,7 +92,8 @@
         if (move==="腿推" && degrees<65) cue="下放很深，留意下背和臀部是否離開椅墊";
         return {move,side:side[0],cue,torso,angle:degrees,
           bent:increasing?degrees>work:degrees<work,
-          extended:increasing?degrees<start:degrees>start};
+          extended:increasing?degrees<start:degrees>start,
+          deep:increasing?degrees>work+MARGIN||degrees<start-MARGIN:degrees<work-MARGIN||degrees>start+MARGIN};
       }
       const joint=move===names[0] || move==="腿伸展" || move==="腿彎舉" ? knee : elbow;
       if (!Number.isFinite(joint)) continue;
@@ -94,10 +106,12 @@
       }
       if (move===names[2] && elbow<100 && visible(e) && Math.abs(e.x-s.x)>.48*Math.hypot(s.x-h.x,s.y-h.y)) cue="手肘往前跑了，上臂貼近身體";
       if (move===names[0] && knee<120 && Math.abs(s.x-h.x)>1.5*Math.abs(s.y-h.y)) cue="軀幹前傾較多，胸口抬起、核心收緊";
-      if(move==="腿伸展") return {move,side:side[0],cue,torso,angle:joint,bent:joint>145,extended:joint<110};
-      return {move,side:side[0],cue,torso,angle:joint,bent:joint<(move===names[2]?85:move===names[0]?115:105),extended:joint>150};
+      if(move==="腿伸展") return {move,side:side[0],cue,torso,angle:joint,bent:joint>145,extended:joint<110,deep:joint>145+MARGIN||joint<110-MARGIN};
+      const work=move===names[2]?85:move===names[0]?120:105;
+      const start=move==="高位下拉"?140:150; // 下拉頂端手肘常不會完全打直
+      return {move,side:side[0],cue,torso,angle:joint,bent:joint<work,extended:joint>start,deep:joint<work-MARGIN||joint>start+MARGIN};
     }
     return null;
   }
-  window.GymPose={sample,supported,supportedByName,visible,angle,lean};
+  window.GymPose={sample,supported,supportedByName,visible,angle,lean,frontal};
 })();

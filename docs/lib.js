@@ -9,7 +9,7 @@
   const items = L.items.map((row,index) => ({
     index, name:row.n, letter:row.l, parts:row.p.map(i=>L.parts[i]), partIndex:row.p,
     aliases:row.a||[], mine:row.u||0, screenshot:Boolean(row.z), track:row.t||null, guide:row.g||null,
-    fedb:row.f||null, primary:(row.m||[]).map(i=>L.muscleKeys[i]), secondary:(row.s||[]).map(i=>L.muscleKeys[i]),
+    fedb:row.f||null, similar:row.fs||null, primary:(row.m||[]).map(i=>L.muscleKeys[i]), secondary:(row.s||[]).map(i=>L.muscleKeys[i]),
     equipment:row.e!=null?L.equipment[row.e]:null, level:row.v!=null?L.levels[row.v]:null,
     type:row.c!=null?L.types[row.c]:null, images:row.i||0,
     search:fold([row.n,...(row.a||[])].join(' '))
@@ -33,7 +33,9 @@
     },
     inPart:part => items.filter(item => item.parts.includes(part)),
     mine:() => items.filter(item => item.mine).sort((a,b) => a.mine-b.mine),
-    image:(item, n) => item.fedb ? L.imageBase + encodeURIComponent(item.fedb) + '/' + n + '.jpg' : '',
+    // 相近動作照片（器材或握法可能不同）也用同一個欄位，介面會另外標示
+    photoId:item => item?.fedb || item?.similar || null,
+    image:(item, n) => (item.fedb || item.similar) ? L.imageBase + encodeURIComponent(item.fedb || item.similar) + '/' + n + '.jpg' : '',
     muscles(item) {
       if (!item) return {primary:[],secondary:[]};
       if (item.primary.length) return {primary:item.primary, secondary:item.secondary};
@@ -41,9 +43,10 @@
     },
     muscleLabel,
     async steps(item) {
-      if (!item?.fedb) return null;
+      const id = item?.fedb || item?.similar;
+      if (!id) return null;
       if (!steps) steps = fetch('fedb-steps.json').then(r => { if (!r.ok) throw Error(); return r.json(); }).catch(e => { steps = null; throw e; });
-      return (await steps)[item.fedb] || null;
+      return (await steps)[id] || null;
     }
   };
 })();

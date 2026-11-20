@@ -44,6 +44,7 @@ for (const [rule, ids] of Object.entries(S.fedbTrack)) for (const id of ids) {
   trackOf.set(id, rule);
 }
 for (const [name, id] of Object.entries(S.mineToFedb)) if (!byId.has(id)) errors.push('日曆對應找不到 id：' + name + ' → ' + id);
+for (const [name, id] of Object.entries(S.mineSimilar)) if (!byId.has(id)) errors.push('相近照片找不到 id：' + name + ' → ' + id);
 
 const items = [];
 const byName = new Map();
@@ -114,6 +115,14 @@ for (const e of fedb) {
   attachFedb(item, e.id);
 }
 
+// 相近動作照片（只給沒有完全相同資料的日曆動作）
+for (const [name, id] of Object.entries(S.mineSimilar)) {
+  const item = byName.get(name);
+  if (!item || !item.src.has('u')) { errors.push('相近照片對應的日曆動作不存在：' + name); continue; }
+  if (item.fedb) { errors.push('已有完全相同資料，不需相近照片：' + name); continue; }
+  item.similar = id;
+}
+
 // 搜尋別名
 for (const [name, words] of Object.entries(S.extraAliases)) {
   const item = byName.get(name);
@@ -159,6 +168,7 @@ const levelCodes = Object.keys(S.levelNames);
 const typeCodes = Object.keys(S.typeNames);
 const out = items.map(item => {
   const e = item.fedb && byId.get(item.fedb);
+  const like = !e && item.similar && byId.get(item.similar);
   const row = { n: item.name, l: item.letter, p: S.parts.map((p, i) => item.parts.has(p) ? i : -1).filter(i => i >= 0) };
   const aliases = [...item.aliases].filter(a => a && a !== item.name);
   if (aliases.length) row.a = aliases;
@@ -174,6 +184,12 @@ const out = items.map(item => {
     row.v = levelCodes.indexOf(e.level);
     row.c = typeCodes.indexOf(e.category);
     row.i = e.images.length;
+  }
+  if (like) {
+    row.fs = like.id;
+    row.m = like.primaryMuscles.map(m => muscleCodes.indexOf(m));
+    if (like.secondaryMuscles.length) row.s = like.secondaryMuscles.map(m => muscleCodes.indexOf(m));
+    row.i = like.images.length;
   }
   return row;
 });
@@ -196,6 +212,6 @@ for (const e of fedb) steps[e.id] = e.instructions;
 fs.writeFileSync(path.join(docs, 'fedb-steps.json'), JSON.stringify(steps));
 
 const count = k => out.filter(r => r[k]).length;
-console.log('動作總數', out.length, '｜日曆', count('u'), '｜截圖', count('z'), '｜有照片', count('f'), '｜可計次', count('t'));
+console.log('動作總數', out.length, '｜日曆', count('u'), '｜截圖', count('z'), '｜有照片', count('f'), '｜相近照片', count('fs'), '｜可計次', count('t'));
 console.log(S.parts.map((p, i) => p + ' ' + out.filter(r => r.p.includes(i)).length).join('、'));
 console.log('未分部位', out.filter(r => !r.p.length).map(r => r.n).join('、'));

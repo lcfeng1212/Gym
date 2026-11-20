@@ -60,7 +60,7 @@ function rowReps(n) {
 }
 
 test('坐姿划船：5 下完整動作記成一組 5 下', () => {
-  const { sets, reps } = run({ hint: '滑輪坐姿划船' }, [...rowReps(5), ...still(70)]);
+  const { sets, reps } = run({ hint: '滑輪坐姿划船' }, [...rowReps(5), ...still(90)]);
   assert.strictEqual(sets.length, 1);
   assert.strictEqual(sets[0].name, '滑輪坐姿划船');
   assert.strictEqual(sets[0].reps, 5);
@@ -71,19 +71,19 @@ test('坐姿划船：半程（沒拉到腰側）不計次、不開組', () => {
   const half = pose({ s: [300, 300], h: [300, 500], k: [420, 500], a: [500, 560], e: [330, 340], w: [400, 345] });
   const frames = hold(rowExtended(), 4);
   for (let i = 0; i < 5; i++) frames.push(...hold(half, 4), ...hold(rowExtended(), 4));
-  const { sets } = run({ hint: '滑輪坐姿划船' }, [...frames, ...still(70)]);
+  const { sets } = run({ hint: '滑輪坐姿划船' }, [...frames, ...still(90)]);
   assert.strictEqual(sets.length, 0);
 });
 
 test('自動辨識：沒選動作也能把划船記成一組', () => {
-  const { sets } = run({}, [...rowReps(4), ...still(70)]);
+  const { sets } = run({}, [...rowReps(4), ...still(90)]);
   assert.strictEqual(sets.length, 1);
   assert.strictEqual(sets[0].name, '滑輪坐姿划船');
   assert.strictEqual(sets[0].reps, 4);
 });
 
-test('兩組之間停 5 秒以上：分成兩組並記錄休息時間', () => {
-  const { sets, rests } = run({ hint: '滑輪坐姿划船' }, [...rowReps(3), ...still(80), ...rowReps(2), ...still(70)]);
+test('兩組之間停 8 秒（超過預設 6 秒）：分成兩組並記錄休息時間', () => {
+  const { sets, rests } = run({ hint: '滑輪坐姿划船' }, [...rowReps(3), ...still(100), ...rowReps(2), ...still(90)]);
   assert.deepStrictEqual(sets.map(s => s.reps), [3, 2]);
   assert.strictEqual(rests.length, 1);
   assert.ok(rests[0][1] > 4000, '休息時間應大於 4 秒，實際 ' + rests[0][1]);
@@ -97,7 +97,7 @@ test('關節偶爾閃一下看不清楚（約 0.3 秒）：不會把次數歸零
     if (i === 2) frames.push(blink, blink, blink);
     frames.push(...hold(rowExtended(), 4));
   }
-  const { sets } = run({ hint: '滑輪坐姿划船' }, [...frames, ...still(70)]);
+  const { sets } = run({ hint: '滑輪坐姿划船' }, [...frames, ...still(90)]);
   assert.strictEqual(sets[0]?.reps, 5);
 });
 
@@ -105,7 +105,7 @@ test('左右側偵測來回跳動：沿用原本那一側，次數不歸零', ()
   // 每隔幾格，左側變不清楚、右側變清楚（同座標），舊版會整個重置
   const flip = p => p.map((pt, i) => [11, 13, 15, 23, 25, 27].includes(i) ? { ...pt, visibility: .4 } : [12, 14, 16, 24, 26, 28].includes(i) ? { ...pt, visibility: .95 } : pt);
   const frames = rowReps(5).map((p, i) => i % 7 === 3 ? flip(p) : p);
-  const { sets } = run({ hint: '滑輪坐姿划船' }, [...frames, ...still(70)]);
+  const { sets } = run({ hint: '滑輪坐姿划船' }, [...frames, ...still(90)]);
   assert.strictEqual(sets[0]?.reps, 5);
 });
 
@@ -121,7 +121,7 @@ test('臀推：從底部開始做 6 下，記成 6 下（舊版只算 5 下）',
   for (let i = 0; i < 6; i++) frames.push(...hold(thrust(172), 4), ...hold(thrust(105), 4));
   const angle = W.GymPose.angle(...[11, 23, 25].map(i => thrust(172)[i]));
   assert.ok(angle > 160, '合成頂端角度 ' + angle);
-  const { sets } = run({ hint: '機械臀推' }, [...frames, ...hold(thrust(105), 70)]);
+  const { sets } = run({ hint: '機械臀推' }, [...frames, ...hold(thrust(105), 90)]);
   assert.strictEqual(sets[0]?.reps, 6);
 });
 
@@ -135,7 +135,7 @@ function squat(knee) {
 test('深蹲：8 下完整深蹲記成 8 下', () => {
   const frames = hold(squat(175), 4);
   for (let i = 0; i < 8; i++) frames.push(...hold(squat(80), 4), ...hold(squat(175), 4));
-  const { sets } = run({ hint: '槓鈴深蹲' }, [...frames, ...hold(squat(175), 70)]);
+  const { sets } = run({ hint: '槓鈴深蹲' }, [...frames, ...hold(squat(175), 90)]);
   assert.strictEqual(sets[0]?.reps, 8);
 });
 
@@ -145,14 +145,14 @@ test('自動模式：走動、調整器材 6 秒但沒完成任何一下，不�
     const dx = (i % 10) * 15;
     frames.push(pose({ s: [300 + dx, 300], h: [300 + dx, 500], k: [320 + dx, 640], a: [320 + dx, 780], e: [310 + dx, 400], w: [320 + dx, 480] }));
   }
-  const { sets } = run({}, [...frames, ...hold(frames.at(-1), 70)]);
+  const { sets } = run({}, [...frames, ...hold(frames.at(-1), 90)]);
   assert.strictEqual(sets.length, 0);
 });
 
 test('只記時間的動作（滑輪臉拉）：持續活動即記一組時間、不計次', () => {
   const frames = [];
   for (let i = 0; i < 100; i++) frames.push(i % 8 < 4 ? rowExtended() : rowBent());
-  const { sets } = run({ hint: '滑輪臉拉' }, [...frames, ...still(70)]);
+  const { sets } = run({ hint: '滑輪臉拉' }, [...frames, ...still(90)]);
   assert.strictEqual(sets.length, 1);
   assert.strictEqual(sets[0].name, '滑輪臉拉');
   assert.strictEqual(sets[0].reps, null);
@@ -165,7 +165,7 @@ test('暫停期間不算活動時間', () => {
   const feed = list => { for (const p of list) { session.update(p, at); at += FRAME; } };
   feed(rowReps(2));
   session.pause(at); at += 30000; session.resume(at);
-  feed(rowReps(2)); feed(still(70));
+  feed(rowReps(2)); feed(still(90));
   assert.strictEqual(sets.length, 1);
   assert.strictEqual(sets[0].reps, 4);
   assert.ok(sets[0].durationMs < 10000, '活動時長不應含 30 秒暫停：' + sets[0].durationMs);
@@ -207,4 +207,97 @@ test('計次規則：只對明列動作計次，不會把推胸拋球、頸前�
   assert.strictEqual(lib.get('槓鈴平板臥推').track, '胸推');
   assert.strictEqual(W.GymPose.supported('腿推機'), '腿推');
   assert.strictEqual(W.GymPose.supported('某個自訂動作'), null);
+});
+
+// ── v8.1：穩定性、組判定、左右分開計次 ──────────────────
+let seed = 1;
+const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+const gauss = () => { let u = 0, v = 0; while (!u) u = rnd(); while (!v) v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+const jitter = (points, sigma) => points.map(p => p.visibility ? { ...p, x: p.x + gauss() * sigma, y: p.y + gauss() * sigma } : p);
+
+// 正面拍：左右兩側都清楚
+function front({ left = 'down', right = 'down' } = {}) {
+  const points = Array.from({ length: 33 }, () => ({ x: 0, y: 0, visibility: 0 }));
+  const set = (i, x, y) => { points[i] = { x, y, visibility: 0.95 }; };
+  set(11, 250, 300); set(12, 350, 300); set(23, 260, 500); set(24, 340, 500);
+  set(25, 260, 640); set(26, 340, 640); set(27, 260, 780); set(28, 340, 780);
+  set(13, 245, 400); set(14, 355, 400);
+  if (left === 'down') set(15, 245, 490); else set(15, 252, 330);
+  if (right === 'down') set(16, 355, 490); else set(16, 348, 330);
+  return points;
+}
+
+test('交替彎舉（正面拍）：左右各 5 下，記成 10 下', () => {
+  const frames = hold(front(), 4);
+  for (let i = 0; i < 5; i++) frames.push(...hold(front({ left: 'up' }), 4), ...hold(front(), 4), ...hold(front({ right: 'up' }), 4), ...hold(front(), 4));
+  const { sets } = run({ hint: '啞鈴二頭彎舉' }, [...frames, ...hold(front(), 90)]);
+  assert.strictEqual(sets[0]?.reps, 10);
+});
+
+test('雙手同時彎舉（正面拍）：8 下記 8 下，不會左右重複算', () => {
+  const frames = hold(front(), 4);
+  for (let i = 0; i < 8; i++) frames.push(...hold(front({ left: 'up', right: 'up' }), 4), ...hold(front(), 4));
+  const { sets } = run({ hint: '啞鈴二頭彎舉' }, [...frames, ...hold(front(), 90)]);
+  assert.strictEqual(sets[0]?.reps, 8);
+});
+
+test('畫面抖動（5% 軀幹長）但人不動 30 秒：不產生紀錄', () => {
+  seed = 9;
+  const frames = Array.from({ length: 375 }, () => jitter(rowExtended(), 10));
+  assert.strictEqual(run({ hint: '滑輪坐姿划船' }, frames).sets.length, 0);
+  seed = 9;
+  assert.strictEqual(run({}, frames).sets.length, 0);
+});
+
+test('畫面抖動（5%）時做 10 下：記 10 下且組會結束', () => {
+  seed = 3;
+  const frames = [...rowReps(10), ...still(150)].map(p => jitter(p, 10));
+  const { sets } = run({ hint: '滑輪坐姿划船' }, frames);
+  assert.strictEqual(sets.length, 1);
+  assert.ok(sets[0].reps >= 9, '次數 ' + sets[0].reps);
+});
+
+test('自動模式：組間走動擺手 20 秒，不產生紀錄', () => {
+  const frames = [];
+  for (let i = 0; i < 250; i++) {
+    const dx = (i % 12) * 12, sw = Math.sin(i / 3) * 60;
+    frames.push(pose({ s: [300 + dx, 300], h: [300 + dx, 500], k: [320 + dx, 640], a: [320 + dx, 780], e: [300 + dx + sw * .5, 400], w: [300 + dx + sw, 480] }));
+  }
+  assert.strictEqual(run({}, frames).sets.length, 0);
+});
+
+test('關節可見度常掉（每個關節每格 20%）：10 下仍記 9 下以上', () => {
+  seed = 11;
+  const drop = p => p.map(pt => pt.visibility > .6 && rnd() < .2 ? { ...pt, visibility: .4 } : pt);
+  const { sets } = run({ hint: '滑輪坐姿划船' }, [...rowReps(10).map(drop), ...still(90)]);
+  assert.ok(sets[0]?.reps >= 9, '次數 ' + sets[0]?.reps);
+});
+
+test('快速動作：端點只停 1 個畫面（約 0.08 秒）也能數到', () => {
+  const frames = hold(front(), 4);
+  for (let i = 0; i < 10; i++) frames.push(front({ left: 'up', right: 'up' }), front());
+  const { sets } = run({ hint: '啞鈴二頭彎舉' }, [...frames, ...hold(front(), 90)]);
+  assert.strictEqual(sets[0]?.reps, 10);
+});
+
+test('組內停 4.5 秒：預設 6 秒內不切組，仍是一組 10 下', () => {
+  const { sets } = run({ hint: '滑輪坐姿划船' }, [...rowReps(5), ...still(56), ...rowReps(5).slice(4), ...still(90)]);
+  assert.deepStrictEqual(sets.map(s => s.reps), [10]);
+});
+
+test('組結束秒數可調：設 4 秒時，停 5 秒會切成兩組', () => {
+  const { sets } = run({ hint: '滑輪坐姿划船', setEndMs: 4000 }, [...rowReps(5), ...still(63), ...rowReps(5).slice(4), ...still(90)]);
+  assert.deepStrictEqual(sets.map(s => s.reps), [5, 5]);
+});
+
+test('休息中暫停：休息時間照實際時間算（含暫停）', () => {
+  const rests = [];
+  const session = W.GymSession.create({ hint: '滑輪坐姿划船', onSet: () => 'x', onRest: (id, ms) => rests.push(ms) });
+  let at = 0;
+  const feed = list => { for (const p of list) { session.update(p, at); at += FRAME; } };
+  feed([...rowReps(3), ...still(90)]);
+  session.pause(at); at += 60000; session.resume(at);
+  feed([...rowReps(3), ...still(10)]);
+  assert.strictEqual(rests.length, 1);
+  assert.ok(rests[0] > 60000, '休息 ' + rests[0]);
 });

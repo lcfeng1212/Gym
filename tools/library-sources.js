@@ -136,3 +136,23 @@ exports.extraAliases = {
   '滑輪臉拉': ['面拉', 'face pull'], '腿推機': ['leg press'], '滑輪高位下拉': ['背闊肌下拉', 'lat pulldown'],
   '滑輪坐姿划船': ['坐姿划船', 'seated row'], '啞鈴側平舉': ['側平舉', 'lateral raise']
 };
+
+// 日曆動作沒有完全相同的資料時，借用「相近動作」的照片與肌群（介面會標示：器材或握法可能不同）。
+exports.mineSimilar = {
+  '保加利亞分腿蹲': 'Split_Squat_with_Dumbbells',
+  '單手滑輪下胸': 'Single-Arm_Cable_Crossover', '滑輪下胸': 'Cable_Crossover', '下胸訓練（器材紀錄不一致）': 'Cable_Crossover',
+  '腿推機': 'Leg_Press', '坐姿腿推機': 'Leg_Press', '單腿腿推機': 'Leg_Press', '分動式腿推機': 'Leg_Press', '水平高腳杯腿推機': 'Leg_Press',
+  '反向飛鳥（器材未記明）': 'Reverse_Flyes', '啞鈴俯身反飛鳥': 'Reverse_Flyes',
+  '高位下拉（器材未記明）': 'Wide-Grip_Lat_Pulldown', '機械高位下拉': 'Wide-Grip_Lat_Pulldown',
+  '跪姿蹬腳鏈': 'Glute_Kickback', '站姿蹬腳鏈': 'One-Legged_Cable_Kickback',
+  '機械補助引體向上': 'Pullups', '窄握自重引體向上': 'Pullups',
+  '機械划船': 'Leverage_Iso_Row', '機械胸支撐划船': 'Leverage_Iso_Row', '機械反手胸支撐划船': 'Leverage_Iso_Row',
+  '機械胸推': 'Leverage_Chest_Press', '機械上斜胸推': 'Leverage_Incline_Chest_Press', '上斜胸推（器材紀錄不一致）': 'Incline_Dumbbell_Press',
+  '機械腿後勾': 'Lying_Leg_Curls',
+  '機械臀推': 'Barbell_Hip_Thrust', '機械臀橋': 'Barbell_Hip_Thrust', '臀推（器材未記明）': 'Barbell_Hip_Thrust', '啞鈴臀橋': 'Barbell_Glute_Bridge',
+  '機械硬舉': 'Barbell_Deadlift', '硬舉（器材未記明）': 'Barbell_Deadlift', '深蹲（負重未記明）': 'Barbell_Squat',
+  '髖內收（器材未記明）': 'Thigh_Adductor', '髖外展（器材未記明）': 'Thigh_Abductor', '坐姿彈力帶髖外展': 'Thigh_Abductor',
+  '寬握滑輪坐姿划船': 'Seated_Cable_Rows', '窄握滑輪坐姿划船': 'Seated_Cable_Rows', '中握滑輪坐姿划船': 'Seated_Cable_Rows',
+  '坐姿划船（器材未記明）': 'Seated_Cable_Rows', '坐姿／俯身划船（型式未明）': 'Seated_Cable_Rows',
+  '臉拉接肩推': 'Face_Pull', '前腿伸直拉腿後': 'Hamstring_Stretch'
+};

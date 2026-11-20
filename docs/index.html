@@ -12,16 +12,16 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>GymMonitor｜訓練監測</title>
-<link rel="stylesheet" href="style.css?v=8">
-<script defer src="library.js?v=8"></script>
-<script defer src="lib.js?v=8"></script>
-<script defer src="research.js?v=8"></script>
-<script defer src="observations.js?v=8"></script>
-<script defer src="camera.js?v=8"></script>
-<script defer src="session.js?v=8"></script>
-<script defer src="overlay.js?v=8"></script>
-<script defer src="capture.js?v=8"></script>
-<script defer src="app.js?v=8"></script>
+<link rel="stylesheet" href="style.css?v=81">
+<script defer src="library.js?v=81"></script>
+<script defer src="lib.js?v=81"></script>
+<script defer src="research.js?v=81"></script>
+<script defer src="observations.js?v=81"></script>
+<script defer src="camera.js?v=81"></script>
+<script defer src="session.js?v=81"></script>
+<script defer src="overlay.js?v=81"></script>
+<script defer src="capture.js?v=81"></script>
+<script defer src="app.js?v=81"></script>
 </head>
 <body>
 <header>
@@ -43,14 +43,16 @@
         <div id="metric" class="metric" aria-label="即時數字">—</div>
       </div>
       <div class="controls">
-        <div id="move-input"><span class="label">選擇動作（選填）</span><button id="choose-move" class="plain chooser" type="button"><span id="choose-move-name">自動辨識</span><small id="choose-move-note">划船、下拉、側平舉會自動辨識</small></button></div>
+        <div id="move-input"><span class="label">選擇動作（選填）</span><button id="choose-move" class="plain chooser" type="button"><span id="choose-move-name">自動辨識</span><small id="choose-move-note">只記划船、下拉、側平舉，其他動作請先選擇</small></button></div>
         <div class="main-controls"><button id="start" class="primary" type="button">開始訓練</button><button id="pause" class="plain" type="button" hidden>暫停</button><button id="stop" class="primary stop" type="button" hidden>結束訓練</button></div>
         <details id="options"><summary>訓練選項</summary>
           <div class="option-grid">
             <label class="check"><input id="voice-count" type="checkbox" checked>語音報數</label>
             <label class="check"><input id="voice-cue" type="checkbox" checked>語音提醒動作</label>
             <label class="check"><input id="mirror" type="checkbox" checked>前鏡頭鏡像顯示</label>
+            <label>組結束判定（停止動作幾秒算一組結束）<select id="set-end"><option value="4">4 秒</option><option value="6">6 秒（預設）</option><option value="8">8 秒</option><option value="12">12 秒</option></select></label>
             <label>辨識模型<select id="model"><option value="lite">輕量（反應快）</option><option value="full">完整（較準、較耗電）</option></select></label>
+            <div class="offline"><button id="offline" class="plain" type="button">下載離線資料</button><small id="offline-state">檢查中…</small></div>
             <button id="pick" class="plain" type="button">選影片分析</button><input id="file" type="file" accept="video/*" hidden>
           </div>
           <p class="subtle" id="auto-scope"></p>
@@ -68,14 +70,14 @@
         </div>
       </section>
       <section class="panel muscles" id="muscles" hidden>
-        <div id="demo-photos" hidden><figure><img id="demo-start" alt="動作起始姿勢"><figcaption>起始</figcaption></figure><figure><img id="demo-end" alt="動作完成位置"><figcaption>動作位置</figcaption></figure></div>
-        <div><h2 id="muscle-title">目標肌群</h2><p id="primary-muscle"></p><p id="secondary-muscle"></p><p id="setup"></p>
+        <div id="demo-photos" hidden><figure><img id="demo-start" crossorigin="anonymous" alt="動作起始姿勢"><figcaption>起始</figcaption></figure><figure><img id="demo-end" crossorigin="anonymous" alt="動作完成位置"><figcaption>動作位置</figcaption></figure></div>
+        <div><h2 id="muscle-title">目標肌群</h2><p id="similar-note" class="note" hidden>照片取自相近動作，器材或握法可能不同。</p><p id="primary-muscle"></p><p id="secondary-muscle"></p><p id="setup"></p>
         <small>取景畫面的紅、藍色是依關節位置畫的目標區域示意，不是偵測肌肉出力。</small> <button id="muscle-detail" class="link" type="button">動作說明</button></div>
       </section>
     </aside>
   </div>
   <p id="notice" class="subtle" role="status">影像在裝置端分析，紀錄儲存在此瀏覽器。</p>
-  <p class="subtle version">GymMonitor v8 · 2026-11-20 · 動作資料：Free Exercise DB（公有領域）</p>
+  <p class="subtle version">GymMonitor v8.1 · 2026-11-20 · 動作資料：Free Exercise DB（公有領域）</p>
 </main>
 <datalist id="move-options"></datalist>
 
@@ -94,7 +96,8 @@
   <div class="dialog-top"><h2 id="d-name"></h2><button class="plain" type="button" data-close="detail">關閉</button></div>
   <p id="d-aliases" class="subtle"></p>
   <div id="d-badges" class="badges"></div>
-  <div id="d-photos" class="photos" hidden><figure><img id="d-img0" alt="起始姿勢"><figcaption>起始</figcaption></figure><figure><img id="d-img1" alt="動作位置"><figcaption>動作位置</figcaption></figure></div>
+  <p id="d-similar" class="note" hidden></p>
+  <div id="d-photos" class="photos" hidden><figure><img id="d-img0" crossorigin="anonymous" alt="起始姿勢"><figcaption>起始</figcaption></figure><figure><img id="d-img1" crossorigin="anonymous" alt="動作位置"><figcaption>動作位置</figcaption></figure></div>
   <dl id="d-facts" class="facts"></dl>
   <section id="d-guide" hidden><h3>操作要點</h3><p id="d-cue"></p><a id="d-source" target="_blank" rel="noopener noreferrer"></a></section>
   <section id="d-camera" hidden><h3>拍攝建議</h3><p id="d-camera-text"></p></section>
@@ -118,6 +121,7 @@
   <details><summary>其他紀錄功能</summary><button id="manual" class="plain" type="button">手動新增</button>
     <div class="dialog-actions"><button id="export" class="plain" type="button">匯出備份</button><label class="file-label plain">匯入備份<input id="import" type="file" accept=".json,application/json"></label></div>
     <p class="subtle">舊網址（ChatGPT 測試站）的紀錄不會自動搬過來：在舊網址「紀錄 → 匯出」，再到這裡匯入。</p>
+    <p class="subtle">紀錄只存在這支手機的瀏覽器。iPhone 的 Safari 網頁若 7 天沒開，可能被系統清除；請「加入主畫面」使用，並定期匯出備份。</p>
     <p id="importmsg" role="status"></p></details></dialog>
 
 <dialog id="weight-editor" aria-labelledby="weight-title"><form id="weight-form"><h2 id="weight-title">修改本組重量</h2><p id="weight-context"></p>
