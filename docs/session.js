@@ -5,7 +5,8 @@
   const timed = new Set([UNKNOWN,MIXED,CARDIO]);
   const autoMoves = ['滑輪坐姿划船','滑輪高位下拉','啞鈴側平舉'];
   const quietMs = 6000;       // 預設：停止活動多久算這組結束（訓練選項可改）
-  const repGapMs = 4000;      // 可計次動作：超過「結束秒數＋此值」沒有新的一下也結束（避免畫面抖動讓組結束不了）
+  const lockMs = 180000;      // 鎖定人物：上一組結束後 3 分鐘內，新的一組要出現在上一組位置附近
+  const lockRange = .6;       // 鎖定範圍：髖部位置差距小於 0.6 個軀幹長
   const missLimit = 6;
   const blinkMs = 600;        // 整個人短暫消失多久內不算追蹤中斷        // 關節短暫看不清楚可容忍的影格數（約 0.5 秒）
   const swingLimit = {'坐姿划船':18,'高位下拉':20,'引體向上':22};
@@ -144,11 +145,23 @@
   }
 
   // unknownTime：沒選動作時，持續活動但認不出動作也試記時間（預設關；畫面抖動時可能誤記）
-  function create({hint='',setEndMs=quietMs,unknownTime=false,onSet=()=>{},onRest=()=>{},onRep=()=>{}}={}) {
+  // 人物位置：兩髖中點（看不到就用一側）與軀幹長
+  function bodyAt(points) {
+    const vis=window.GymPose.visible;
+    const hips=[23,24].filter(i=>vis(points[i])).map(i=>points[i]);
+    const shoulders=[11,12].filter(i=>vis(points[i])).map(i=>points[i]);
+    if(!hips.length||!shoulders.length)return null;
+    const avg=list=>({x:list.reduce((s,p)=>s+p.x,0)/list.length,y:list.reduce((s,p)=>s+p.y,0)/list.length});
+    const h=avg(hips),sh=avg(shoulders);
+    const torso=Math.hypot(sh.x-h.x,sh.y-h.y);
+    return torso>20?{x:h.x,y:h.y,torso}:null;
+  }
+
+  function create({hint='',setEndMs=quietMs,unknownTime=false,lockPerson=false,onSet=()=>{},onRest=()=>{},onRep=()=>{}}={}) {
     const tracker=exerciseTracker(hint), motion=motionTracker(), smooth=smoother();
     const timedMode=Boolean(hint&&!window.GymPose.supported(hint));
     const unclassified=hint||!unknownTime?null:motionTracker(true);
-    let current=null, rest=null, lastTracked=null, lostAt=null, view={phase:'ready', tracking:false};
+    let current=null, rest=null, lastTracked=null, lostAt=null, view={phase:'ready', tracking:false}, anchor=null;
     let pausedAt=null, pausedTotal=0;
     function pause(at) {
       if(pausedAt!==null)return;
@@ -178,6 +191,7 @@
       const set={name,reps,durationMs:Math.max(1,end-current.start-missing),
         startAt:current.startAt,endAt:Math.max(current.startAt+1,current.endAt),
         trackingInterrupted:current.gaps.length>0||lostAt!==null,cue:current.cue||''};
+      if(current.body)anchor={...current.body,at:end};
       rest={at:restAt,id:onSet(set),set};
       current=null;
     }
@@ -191,6 +205,8 @@
         if(lostAt===null)lostAt=lastTracked??at;
         // 短暫看不到（不到 0.6 秒）保留這一下的進度；太久才重置
         if(at-lostAt>blinkMs)tracker.clear();
+        // 做完最後一下就走出畫面：一樣在設定秒數後結束這組
+        if(current&&at-(current.lastRep??current.lastActive)>=setEndMs)finish();
         return view={...view,tracking:false,phase:current?'working':rest?'rest':'ready',restMs:rest?Math.max(0,at-rest.at):0};
       }
       const lost=lostAt!==null&&at-lostAt>blinkMs?lostAt:null;
@@ -202,11 +218,16 @@
       }
       lostAt=null;
       lastTracked=at;
-      const {move,cue}=tracker.update(points,at);
+      let {move,cue}=tracker.update(points,at);
+      // 鎖定人物：休息中出現在別的位置的動作（旁人入鏡）不開新的一組
+      const body=bodyAt(points);
+      const far=Boolean(lockPerson&&!current&&anchor&&body&&at-anchor.at<lockMs&&
+        Math.hypot(body.x-anchor.x,body.y-anchor.y)>anchor.torso*lockRange);
+      if(far&&move){move=null;cue='位置和上一組不同，這下未計入（已開啟鎖定人物）';}
       // 可計次的動作（含自動辨識）一定要完成一下才開組，避免走動、調整器材、畫面抖動被記成一組
       const longMotion=signal.active&&signal.onset!==null&&at-signal.onset>=3000;
       const fallback=!hint&&relative?.active&&at-relative.onset>=3000;
-      const canStart=move||fallback||(timedMode&&signal.active&&(!rest||longMotion));
+      const canStart=!far&&(move||fallback||(timedMode&&signal.active&&(!rest||longMotion)));
       if(!current && canStart) {
         const start=Math.max(rest?.at||0,(fallback&&!move?relative.onset:signal.onset)??at,timedMode?0:at-6000);
         if(rest)onRest(rest.id,start-rest.at);
@@ -222,13 +243,14 @@
         if(move){
           current.endAt=at+pausedTotal;
           current.lastActive=at;current.lastRep=at;
+          if(body)current.body=body;
           const count=(current.moves.get(move)||0)+1;
           current.moves.set(move,count);
           onRep(move,count);
         }
-        const quiet=at-Math.max(current.quietFrom,current.lastActive)>=setEndMs;
-        const noRep=current.lastRep!=null&&at-current.lastRep>=setEndMs+repGapMs;
-        if(quiet||noRep)finish(); // 不清除計次狀態：剛好在結束時開始的下一下仍會算進下一組
+        // 可計次：最後一下之後設定秒數內沒有新的一下就結束（畫面抖動不影響）；只記時間：停止活動設定秒數後結束
+        const done=current.lastRep!=null?at-current.lastRep>=setEndMs:at-Math.max(current.quietFrom,current.lastActive)>=setEndMs;
+        if(done)finish(); // 不清除計次狀態：剛好在結束時開始的下一下仍會算進下一組
       }
       const keys=current?[...current.moves.keys()]:[];
       const name=keys.length>1?MIXED:keys[0]||hint||(current?UNKNOWN:'');

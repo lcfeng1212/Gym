@@ -113,3 +113,5 @@ dialog.sheet[open]{display:flex}
 .version{font-size:12px;padding-bottom:12px}
 .note{font-size:13px;color:var(--warn);background:var(--warn-bg);border-radius:8px;padding:5px 8px;margin:6px 0}
 .offline{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.storage{font-size:13px;margin:6px 0}.storage.warn{color:var(--warn);background:var(--warn-bg);border-radius:8px;padding:4px 8px;font-weight:700}
+.more{width:100%;margin-top:12px}

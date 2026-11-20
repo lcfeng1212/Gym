@@ -1,11 +1,11 @@
 // GymMonitor 離線快取：載入過（或按「下載離線資料」）之後，健身房沒網路也能開啟與辨識。
 'use strict';
-const SHELL_CACHE = 'gm-shell-v8.3';
+const SHELL_CACHE = 'gm-shell-v8.4';
 const MODEL_CACHE = 'gm-models-1';   // 姿態辨識程式與模型（網址含版本，不會變）
 const PHOTO_CACHE = 'gm-photos-1';   // 動作照片
 const PHOTO_LIMIT = 300;
-const SHELL = ['./', 'index.html', 'style.css?v=83', 'library.js?v=83', 'lib.js?v=83', 'research.js?v=83',
-  'observations.js?v=83', 'camera.js?v=83', 'session.js?v=83', 'overlay.js?v=83', 'capture.js?v=83', 'app.js?v=83',
+const SHELL = ['./', 'index.html', 'style.css?v=84', 'library.js?v=84', 'lib.js?v=84', 'research.js?v=84',
+  'observations.js?v=84', 'camera.js?v=84', 'session.js?v=84', 'overlay.js?v=84', 'capture.js?v=84', 'app.js?v=84',
   'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'fedb-steps.json'];
 
 self.addEventListener('install', event => {
@@ -35,18 +35,20 @@ async function cacheFirst(request, name, limit) {
   }
   return response;
 }
-// 本站檔案：有網路就拿最新版（4 秒內），沒網路或太慢用快取
+// 本站檔案：有網路就拿最新版；4 秒內沒回應先用快取。沒有快取（例如第一次打開原文步驟）就繼續等網路，不會因逾時失敗
 async function networkFirst(request) {
   const cache = await caches.open(SHELL_CACHE);
-  try {
-    const response = await Promise.race([fetch(request), new Promise((_, reject) => setTimeout(() => reject(Error('timeout')), 4000))]);
+  const network = fetch(request).then(async response => {
     if (response.ok) await cache.put(request, response.clone());
     return response;
+  });
+  try {
+    return await Promise.race([network, new Promise((_, reject) => setTimeout(() => reject(Error('timeout')), 4000))]);
   } catch (error) {
     const hit = await cache.match(request, {ignoreSearch: request.mode === 'navigate'}) ||
       (request.mode === 'navigate' ? await cache.match('index.html') : null);
-    if (hit) return hit;
-    throw error;
+    if (hit) { network.catch(() => {}); return hit; }
+    return network;
   }
 }
 

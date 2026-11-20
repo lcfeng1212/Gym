@@ -10,7 +10,7 @@
 
   // ── 設定 ─────────────────────────────────────────
   const settingsKey='gymmonitor.settings.1';
-  const settings={count:true,cue:true,mirror:true,model:'lite',facing:'environment',setEnd:6,unknownTime:false};
+  const settings={count:true,cue:true,mirror:true,model:'lite',facing:'environment',setEnd:6,unknownTime:false,lockPerson:false};
   try{Object.assign(settings,JSON.parse(localStorage.getItem(settingsKey)||'{}'));}catch{}
   const saveSettings=()=>{try{localStorage.setItem(settingsKey,JSON.stringify(settings));}catch{}};
   el('voice-count').checked=settings.count;el('voice-cue').checked=settings.cue;el('mirror').checked=settings.mirror;
@@ -21,6 +21,8 @@
   el('model').onchange=e=>{settings.model=e.target.value;saveSettings();};
   el('set-end').value=String(settings.setEnd);if(!el('set-end').value){settings.setEnd=6;el('set-end').value='6';}
   el('set-end').onchange=e=>{settings.setEnd=Number(e.target.value)||6;saveSettings();};
+  el('lock-person').checked=Boolean(settings.lockPerson);
+  el('lock-person').onchange=e=>{settings.lockPerson=e.target.checked;saveSettings();};
   el('unknown-time').checked=Boolean(settings.unknownTime);
   el('unknown-time').onchange=e=>{settings.unknownTime=e.target.checked;saveSettings();describeAuto();};
 
@@ -194,7 +196,7 @@
     el('lens-controls').hidden=usingVideo;el('switch-lens').disabled=!usingVideo;
     hint=selectedMove;
     workoutId=crypto.randomUUID();latestId=null;renderLast();
-    session=GymSession.create({hint,setEndMs:settings.setEnd*1000,unknownTime:settings.unknownTime,onSet:recordSet,onRest:recordRest,onRep});
+    session=GymSession.create({hint,setEndMs:settings.setEnd*1000,unknownTime:settings.unknownTime,lockPerson:settings.lockPerson,onSet:recordSet,onRest:recordRest,onRep});
     el('start').hidden=true;el('stop').hidden=false;el('options').hidden=true;el('legend').hidden=false;
     put('state',file?'準備影片分析…':'正開啟相機…');put('move',hint||'自動辨識');
     put('metric','—');put('cue','');put('notice','影像在裝置端分析，紀錄儲存在此瀏覽器。');
@@ -270,6 +272,7 @@
     latestId=id;
     restSpoken=0;
     if(!flushPending({announce}))journalPending();
+    else storageWarning();
     renderLast();
     if(settings.count)say('這組完成'+(reps?'，'+reps+'下':'')+'，開始休息');
     return id;
@@ -311,7 +314,7 @@
   function description(row) {
     const time=row.durationMs?duration(row.durationMs):Number(row.amount.toFixed(2))+' 分鐘';
     if(row.unit==='reps')return row.amount+' 下';
-    return GymPose.supported(row.name)?time+'（未數到次數，請核對）':time;
+    return GymPose.supported(row.name)&&row.source!=='manual'?time+'（未數到次數，請核對）':time;
   }
   function renderLast() {
     const row=findRow(latestId);
@@ -428,6 +431,7 @@
       const legacy=!r.startTime&&!r.source&&r.durationMs>0&&Number.isFinite(Date.parse(r.date));
       const span=Number.isFinite(Date.parse(r.startTime))&&Number.isFinite(Date.parse(r.endTime))?
         timeOf(r.startTime)+'–'+timeOf(r.endTime):
+        r.source==='video'&&Number.isFinite(r.videoStartMs)&&Number.isFinite(r.videoEndMs)?'影片 '+duration(r.videoStartMs)+'–'+duration(r.videoEndMs):
         legacy?timeOf(new Date(Date.parse(r.date)-r.durationMs).toISOString())+'–'+timeOf(r.date)+'（推算）':'起訖未填';
       return span+'　'+r.name+'　第'+n+'組　'+description(r)+(r.analysis&&(!r.analysisMove||r.analysisMove===r.name)?'　觀察：'+r.analysis:'')+(r.weight==null?'':'　'+r.weight+' kg')+
         (r.restMs==null?'':'　休息 '+duration(r.restMs))+(r.trackingInterrupted?'　（有遮擋）':'')+(r.note?'　備註：'+r.note:'');
@@ -442,10 +446,17 @@
     }
     setTimeout(()=>{button.textContent='複製這天';},2500);
   }
+  // 紀錄多時先只顯示最近 30 天（以最新一筆紀錄往前算），往下按「載入更早」再多 30 天
+  let historyDays=30;
   function renderHistory(){
     const list=el('records');list.replaceChildren();
-    const rows=allRows();
-    if(!rows.length){list.textContent='尚無訓練紀錄。';return;}
+    renderStorage();
+    const all=allRows();
+    if(!all.length){list.textContent='尚無訓練紀錄。';return;}
+    const newest=Math.max(...all.map(r=>Date.parse(r.date)).filter(Number.isFinite));
+    const cutoff=newest-historyDays*86400000;
+    const rows=all.filter(r=>!(Date.parse(r.date)<cutoff));
+    const hidden=all.length-rows.length;
     let day='';
     for(const row of rows) {
       const rowDay=dayOf(row.date);
@@ -463,6 +474,31 @@
       weightButton.onclick=()=>editWeight(row.id);
       list.append(make('div',{className:'record'},make('div',{},name,details),make('div',{className:'record-actions'},weightButton,fix)));
     }
+    if(hidden){
+      const more=make('button',{className:'plain more',type:'button',textContent:'載入更早 30 天（還有 '+hidden+' 組）'});
+      more.onclick=()=>{historyDays+=30;const y=list.parentElement.scrollTop;renderHistory();list.parentElement.scrollTop=y;};
+      list.append(more);
+    }
+  }
+  // 4. 儲存空間（預估值）：iPhone Safari 上限無法確認，保守以 5 MB（約 250 萬字元）計
+  const storageLimit=2500000;
+  function storageUse(){
+    try{
+      let chars=0;
+      for(let i=0;i<localStorage.length;i++){const k=localStorage.key(i);if(k.startsWith('gymmonitor'))chars+=k.length+(localStorage.getItem(k)||'').length;}
+      return {chars,ratio:chars/storageLimit,perRow:records.length?chars/records.length:430};
+    }catch{return null;}
+  }
+  function renderStorage(){
+    const use=storageUse();
+    if(!use){put('storage','無法讀取儲存空間');return;}
+    const left=Math.max(0,Math.floor((storageLimit-use.chars)/Math.max(200,use.perRow)));
+    put('storage','儲存空間：已用約 '+Math.round(use.ratio*100)+'%，約還能存 '+left+' 組（預估值，以 5 MB 計）');
+    el('storage').classList.toggle('warn',use.ratio>=.8);
+  }
+  function storageWarning(){
+    const use=storageUse();
+    if(use&&use.ratio>=.8)put('notice','紀錄空間已用約 '+Math.round(use.ratio*100)+'%，請到「紀錄」匯出備份。');
   }
   function editWeight(id){
     const row=findRow(id);
@@ -707,7 +743,7 @@
   el('file').onchange=event=>{const file=event.target.files?.[0];if(file)start(file);};
   el('choose-move').onclick=()=>openPicker('pick');
   el('edit-last').onclick=()=>edit(latestId);
-  el('open-history').onclick=()=>{renderHistory();el('history').showModal();};
+  el('open-history').onclick=()=>{historyDays=30;renderHistory();el('history').showModal();};
   el('manual').onclick=()=>{el('history').close();edit(null);};
   el('open-library').onclick=()=>openPicker('browse');
   document.querySelectorAll('[data-close]').forEach(button=>{button.onclick=()=>el(button.dataset.close).close();});
@@ -799,5 +835,6 @@
   void offlineStatus();
 
   describeAuto();
+  storageWarning();
   window.GymApp={openPicker,showDetail,choose,state:()=>({selectedMove,session:Boolean(session),paused,lastView})};
 })();

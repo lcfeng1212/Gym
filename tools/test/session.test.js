@@ -344,3 +344,44 @@ test('開關預設關閉：畫面抖動、組間走動擺手，結束訓練後�
 test('指定動作時不受開關影響：划船 5 下仍記 5 下', () => {
   assert.strictEqual(run({ hint: '滑輪坐姿划船', unknownTime: true }, [...rowReps(5), ...still(90)]).sets[0]?.reps, 5);
 });
+
+// ── v8.4：組結束以最後一下計、鎖定人物 ─────────────────
+function endDelay(options, noise) {
+  seed = 4;
+  let endAt = null, lastRep = null, at = 0;
+  const session = W.GymSession.create({ hint: '滑輪坐姿划船', ...options, onSet: () => { endAt = at; return 1; }, onRep: () => { lastRep = at; } });
+  for (const p of [...rowReps(8), ...still(300)].map(p => noise ? jitter(p, noise * 200) : p)) { if (endAt !== null) break; session.update(p, at); at += FRAME; }
+  return (endAt - lastRep) / 1000;
+}
+test('組結束判定：畫面抖動 5% 時，設 4／6／12 秒就是最後一下後 4／6／12 秒', () => {
+  for (const sec of [4, 6, 12]) {
+    assert.ok(Math.abs(endDelay({ setEndMs: sec * 1000 }, .05) - sec) < .2, sec + ' 秒');
+    assert.ok(Math.abs(endDelay({ setEndMs: sec * 1000 }, 0) - sec) < .2, sec + ' 秒（無抖動）');
+  }
+});
+
+test('做完最後一下就走出畫面：一樣在設定秒數後結束這組', () => {
+  const gone = Array.from({ length: 120 }, () => Array.from({ length: 33 }, () => ({ x: 0, y: 0, visibility: 0 })));
+  const sets = [];
+  let at = 0, endAt = null;
+  const session = W.GymSession.create({ hint: '滑輪坐姿划船', onSet: s => { sets.push(s); endAt = at; return 1; } });
+  for (const p of [...rowReps(6), ...gone]) { session.update(p, at); at += FRAME; }
+  assert.strictEqual(sets.length, 1);
+  assert.strictEqual(sets[0].reps, 6);
+  assert.ok(endAt < rowReps(6).length * FRAME + 7000, '結束時間 ' + endAt);
+});
+
+// 旁人：位置往右偏 150px（約 0.75 個軀幹長）做 3 下
+const shifted = p => p.map(pt => pt.visibility ? { ...pt, x: pt.x + 150 } : pt);
+const bystander = [...rowReps(8), ...still(100), ...rowReps(3).map(shifted), ...still(100)];
+test('鎖定人物（關閉，預設）：休息中旁人入鏡做 3 下，會多記一組', () => {
+  assert.deepStrictEqual(run({ hint: '滑輪坐姿划船' }, bystander).sets.map(s => s.reps), [8, 3]);
+});
+test('鎖定人物（開啟）：旁人在別的位置做的動作不開組，自己回原位再做照常記', () => {
+  const { sets } = run({ hint: '滑輪坐姿划船', lockPerson: true }, [...bystander, ...rowReps(5), ...still(100)]);
+  assert.deepStrictEqual(sets.map(s => s.reps), [8, 5]);
+});
+test('鎖定人物（開啟）：上一組結束 3 分鐘後解除，換位置也會記', () => {
+  const longRest = [...rowReps(8), ...Array.from({ length: Math.round(185000 / FRAME) }, () => rowExtended()), ...rowReps(4).map(shifted), ...still(100)];
+  assert.deepStrictEqual(run({ hint: '滑輪坐姿划船', lockPerson: true }, longRest).sets.map(s => s.reps), [8, 4]);
+});

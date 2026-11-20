@@ -12,16 +12,16 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>GymMonitor｜訓練監測</title>
-<link rel="stylesheet" href="style.css?v=83">
-<script defer src="library.js?v=83"></script>
-<script defer src="lib.js?v=83"></script>
-<script defer src="research.js?v=83"></script>
-<script defer src="observations.js?v=83"></script>
-<script defer src="camera.js?v=83"></script>
-<script defer src="session.js?v=83"></script>
-<script defer src="overlay.js?v=83"></script>
-<script defer src="capture.js?v=83"></script>
-<script defer src="app.js?v=83"></script>
+<link rel="stylesheet" href="style.css?v=84">
+<script defer src="library.js?v=84"></script>
+<script defer src="lib.js?v=84"></script>
+<script defer src="research.js?v=84"></script>
+<script defer src="observations.js?v=84"></script>
+<script defer src="camera.js?v=84"></script>
+<script defer src="session.js?v=84"></script>
+<script defer src="overlay.js?v=84"></script>
+<script defer src="capture.js?v=84"></script>
+<script defer src="app.js?v=84"></script>
 </head>
 <body>
 <header>
@@ -50,6 +50,7 @@
             <label class="check"><input id="voice-count" type="checkbox" checked>語音報數</label>
             <label class="check"><input id="voice-cue" type="checkbox" checked>語音提醒動作</label>
             <label class="check"><input id="mirror" type="checkbox" checked>前鏡頭鏡像顯示</label>
+            <label class="check"><input id="lock-person" type="checkbox">鎖定人物位置：休息中別人入鏡不開新組（組間移動手機重新取景，3 分鐘內可能不認得你）</label>
             <label class="check"><input id="unknown-time" type="checkbox">沒選動作時，認不出的動作試記時間（畫面抖動時可能誤記）</label>
             <label>組結束判定（停止動作幾秒算一組結束）<select id="set-end"><option value="4">4 秒</option><option value="6">6 秒（預設）</option><option value="8">8 秒</option><option value="12">12 秒</option></select></label>
             <label>辨識模型<select id="model"><option value="lite">輕量（反應快）</option><option value="full">完整（較準、較耗電）</option></select></label>
@@ -79,7 +80,7 @@
   </div>
   <button id="retry-save" class="plain" type="button" hidden>重試儲存</button>
   <p id="notice" class="subtle" role="status">影像在裝置端分析，紀錄儲存在此瀏覽器。</p>
-  <p class="subtle version">GymMonitor v8.3 · 2026-11-20 · 動作資料：Free Exercise DB（公有領域）</p>
+  <p class="subtle version">GymMonitor v8.4 · 2026-11-21 · 動作資料：Free Exercise DB（公有領域）</p>
 </main>
 <datalist id="move-options"></datalist>
 
@@ -119,6 +120,7 @@
   <p id="edit-error" role="status"></p></form></dialog>
 
 <dialog id="history"><div class="dialog-top"><h2>訓練紀錄</h2><button class="plain" type="button" data-close="history">關閉</button></div>
+  <p id="storage" class="subtle storage"></p>
   <div id="records"></div>
   <details><summary>其他紀錄功能</summary><button id="manual" class="plain" type="button">手動新增</button>
     <div class="dialog-actions"><button id="export" class="plain" type="button">匯出備份</button><button id="export-text" class="plain" type="button">匯出全部文字</button><label class="file-label plain">匯入備份<input id="import" type="file" accept=".json,application/json"></label></div>
