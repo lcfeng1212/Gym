@@ -24,15 +24,45 @@
 
   // ── 紀錄 ─────────────────────────────────────────
   const key='gymmonitor.web.logs.1';
-  let records=[], storageAvailable=true;
+  let records=[];
+  const pending=new Map();
+  const pendingKey=key+'.pending';
+  try {
+    const queue=JSON.parse(localStorage.getItem(pendingKey)||'[]');
+    if(Array.isArray(queue))for(const row of queue)if(row?.id)pending.set(row.id,row);
+  } catch {}
+  function refreshPending() {
+    const count=pending.size;
+    el('retry-save').hidden=!count;
+    if(count)put('notice',count+' 組待儲存。可重試或從紀錄匯出備份。');
+  }
+  function journalPending() {
+    try {
+      if(pending.size)localStorage.setItem(pendingKey,JSON.stringify([...pending.values()]));
+      else localStorage.removeItem(pendingKey);
+    } catch {}
+  }
+  function flushPending() {
+    if(!pending.size)return true;
+    const saved=change(rows=>{
+      const ids=new Set(rows.map(row=>row.id));
+      return [...pending.values()].reverse().filter(row=>!ids.has(row.id)).concat(rows);
+    });
+    if(saved){
+      pending.clear();
+      journalPending();
+      put('notice','待儲存組別已儲存。');
+    }
+    refreshPending();
+    return saved;
+  }
   function readRecords() {
     const result=JSON.parse(localStorage.getItem(key)||'[]');
     if(!Array.isArray(result))throw Error('無法讀取紀錄');
     return result;
   }
-  try{records=readRecords();}catch{storageAvailable=false;put('notice','此瀏覽器無法讀取訓練紀錄。');}
+  try{records=readRecords();}catch{put('notice','此瀏覽器無法讀取訓練紀錄。');}
   function change(transform) {
-    if(!storageAvailable)return false;
     try {
       const next=transform(readRecords());
       localStorage.setItem(key,JSON.stringify(next)); records=next;
@@ -182,6 +212,7 @@
   function stop(message='訓練已結束。') {
     if(!session)return;
     capture.stop();session.finish();session=null;releaseAwake();
+    flushPending();
     el('start').hidden=false;el('stop').hidden=true;el('options').hidden=false;el('legend').hidden=true;
     el('pause').hidden=true;paused=false;resuming=false;el('viewport').classList.remove('is-paused');
     put('preview-title','準備開始');phase('ready');
@@ -189,24 +220,37 @@
     usingVideo=false;activeFacing=null;applyMirror();
     el('lens-controls').hidden=false;el('switch-lens').disabled=false;showLens();
     el('move-input').hidden=false;
+    refreshPending();
     put('state',message);put('move',selectedMove||'自動辨識');put('metric','—');put('cue','');
   }
   function onRep(move,count){
     if(settings.count)say(String(count),{kind:'count'});
   }
-  function recordSet({name,reps,durationMs,trackingInterrupted}) {
+  function recordSet({name,reps,durationMs,trackingInterrupted,startAt,endAt,cue}) {
     const id=crypto.randomUUID();
+    const now=new Date().toISOString();
+    const epoch=typeof performance.timeOrigin==='number'?performance.timeOrigin:Date.now()-performance.now();
+    const times=usingVideo?{source:'video',videoStartMs:startAt,videoEndMs:endAt}:
+      {startTime:new Date(epoch+startAt).toISOString(),endTime:new Date(epoch+endAt).toISOString()};
     const row={id,workoutId,name,unit:reps===null?'minutes':'reps',amount:reps??durationMs/60000,
-      durationMs,restMs:null,trackingInterrupted,weight:null,note:'',date:new Date().toISOString()};
-    if(change(rows=>[row,...rows])){
-      latestId=id;renderLast();restSpoken=0;
-      if(settings.count)say('第'+setIndex(name,id)+'組完成'+(reps?'，'+reps+'下':'')+'，開始休息');
-      return id;
-    }
-    return null;
+      durationMs,restMs:null,trackingInterrupted,weight:null,note:'',date:times.startTime||now,recordedAt:now,
+      ...times,...(cue?{analysis:cue,analysisMove:name}:{})};
+    pending.set(id,row);
+    latestId=id;
+    restSpoken=0;
+    if(!flushPending())journalPending();
+    renderLast();
+    if(settings.count)say('這組完成'+(reps?'，'+reps+'下':'')+'，開始休息');
+    return id;
   }
   function recordRest(id,restMs) {
-    if(id)change(rows=>rows.map(row=>row.id===id?{...row,restMs}:row));
+    if(!id)return;
+    if(pending.has(id)){
+      pending.set(id,{...pending.get(id),restMs});
+      if(!flushPending())journalPending();
+      return;
+    }
+    change(rows=>rows.map(row=>row.id===id?{...row,restMs}:row));
   }
   function setIndex(name,id) {
     const completed=records.filter(r=>r.workoutId===workoutId&&r.name===name);
@@ -291,6 +335,7 @@
     const row=records.find(r=>r.id===id);
     if(id&&!row)return;
     editing=id;
+    deleteArmed=null;
     el('edit-name').value=row?.name||'';
     el('edit-reps').value=row?.unit==='reps'?row.amount:'';
     el('edit-minutes').value='';el('edit-weight').value=row?.weight??'';
@@ -312,10 +357,12 @@
     if(!id||!confirmDelete())return;
     if(change(rows=>rows.filter(row=>row.id!==id))){if(latestId===id)latestId=null;renderLast();el('editor').close();}
   };
-  let deleteArmed=0;
+  let deleteArmed=null;
   function confirmDelete(){
-    if(Date.now()-deleteArmed<4000){deleteArmed=0;return true;}
-    deleteArmed=Date.now();put('edit-error','再按一次「刪除這組」確認刪除。');return false;
+    if(deleteArmed?.id===editing&&Date.now()-deleteArmed.at<4000){deleteArmed=null;return true;}
+    deleteArmed={id:editing,at:Date.now()};
+    put('edit-error','再按一次「刪除這組」確認刪除。');
+    return false;
   }
   el('edit-form').onsubmit=event=>{
     event.preventDefault();
@@ -330,7 +377,7 @@
     const details={name,unit:reps===null?'minutes':'reps',amount:reps??minutes,
       weight:el('edit-weight').value===''?null:Number(el('edit-weight').value),note:el('edit-note').value.trim()};
     if(!change(rows=>row?rows.map(r=>r.id===editing?{...r,...details}:r):
-      [{id:crypto.randomUUID(),date:new Date().toISOString(),...details},...rows])){
+      [{id:crypto.randomUUID(),workoutId:session?workoutId:crypto.randomUUID(),source:'manual',date:new Date().toISOString(),...details},...rows])){
       put('edit-error','儲存失敗。');return;
     }
     el('editor').close();
@@ -339,16 +386,18 @@
   // ── 紀錄清單（依日期分組，可複製給 Claude 寫日曆）────────
   const dayOf=iso=>new Date(iso).toLocaleDateString('sv-SE',tz);
   const timeOf=iso=>new Date(iso).toLocaleTimeString('zh-TW',{...tz,hour:'2-digit',minute:'2-digit',hour12:false});
-  function summary(day){
-    const rows=records.filter(r=>dayOf(r.date)===day).sort((a,b)=>Date.parse(a.date)-Date.parse(b.date));
+  function summary(day,dayRows=records.filter(r=>dayOf(r.date)===day)){
+    const rows=[...dayRows].sort((a,b)=>Date.parse(a.date)-Date.parse(b.date));
     const counts=new Map();
     const lines=rows.map(r=>{
-      const n=(counts.get(r.workoutId+r.name)||0)+1;counts.set(r.workoutId+r.name,n);
-      const start=r.durationMs?new Date(Date.parse(r.date)-r.durationMs).toISOString():r.date;
-      return timeOf(start)+'–'+timeOf(r.date)+'　'+r.name+'　第'+n+'組　'+description(r)+(r.weight==null?'':'　'+r.weight+' kg')+
+      const group=JSON.stringify([r.workoutId||r.id,r.name]);
+      const n=(counts.get(group)||0)+1;counts.set(group,n);
+      const span=Number.isFinite(Date.parse(r.startTime))&&Number.isFinite(Date.parse(r.endTime))?
+        timeOf(r.startTime)+'–'+timeOf(r.endTime):'起訖未填';
+      return span+'　'+r.name+'　第'+n+'組　'+description(r)+(r.analysis&&(!r.analysisMove||r.analysisMove===r.name)?'　觀察：'+r.analysis:'')+(r.weight==null?'':'　'+r.weight+' kg')+
         (r.restMs==null?'':'　休息 '+duration(r.restMs))+(r.trackingInterrupted?'　（有遮擋）':'')+(r.note?'　備註：'+r.note:'');
     });
-    return 'GymMonitor 訓練紀錄｜'+day+'\n時間為台北時間，開始時間＝結束時間減活動時長（可計算值）\n'+lines.join('\n');
+    return 'GymMonitor 訓練紀錄｜'+day+'\n已記錄的起訖時間以台北時間顯示\n'+lines.join('\n');
   }
   async function copyText(text,button){
     try{await navigator.clipboard.writeText(text);button.textContent='已複製';}
@@ -633,10 +682,29 @@
     else if(!paused)void keepAwake();
   });
   window.addEventListener('pagehide',()=>{if(session)stop('離開頁面，已結束這次訓練。');});
-  el('export').onclick=()=>{
-    const url=URL.createObjectURL(new Blob([JSON.stringify(records,null,2)],{type:'application/json'}));
-    const link=make('a',{href:url,download:'GymMonitor-'+new Date().toLocaleDateString('sv-SE',tz)+'.json'});link.click();
+  el('retry-save').onclick=flushPending;
+  flushPending();
+  function backupRows(){
+    const backup=new Map(records.map(row=>[row.id,row]));
+    for(const row of pending.values())if(!backup.has(row.id))backup.set(row.id,row);
+    return [...backup.values()];
+  }
+  function downloadBackup(content,extension,type){
+    const url=URL.createObjectURL(new Blob([content],{type}));
+    const link=make('a',{href:url,download:'GymMonitor-'+dayOf(new Date())+'.'+extension});
+    link.click();
     setTimeout(()=>URL.revokeObjectURL(url),1000);
+  }
+  el('export').onclick=()=>downloadBackup(JSON.stringify(backupRows(),null,2),'json','application/json');
+  el('export-text').onclick=()=>{
+    const days=new Map();
+    for(const row of backupRows()){
+      const day=dayOf(row.date);
+      if(!days.has(day))days.set(day,[]);
+      days.get(day).push(row);
+    }
+    const reports=[...days.keys()].sort().map(day=>summary(day,days.get(day)));
+    downloadBackup(reports.join('\n\n')||'目前沒有訓練紀錄。','txt','text/plain;charset=utf-8');
   };
   el('import').onchange=async event=>{
     try{
@@ -665,7 +733,11 @@
     try{
       const model=await caches.match(GymCapture.modelUrl(settings.model));
       const sdk=await caches.match(GymCapture.sdk+'/vision_bundle.mjs');
-      put('offline-state',model&&sdk?'已下載（'+(settings.model==='full'?'完整':'輕量')+'模型），沒網路也能用':'尚未下載，約 15–19 MB');
+      const wasmFiles=await Promise.all(['vision_wasm_internal','vision_wasm_nosimd_internal'].map(async name=>{
+        const prefix=GymCapture.sdk+'/wasm/'+name;
+        return (await caches.match(prefix+'.js'))&&(await caches.match(prefix+'.wasm'));
+      }));
+      put('offline-state',model&&sdk&&wasmFiles.some(Boolean)?'已下載（'+(settings.model==='full'?'完整':'輕量')+'模型），沒網路也能用':'尚未下載，約 15–19 MB');
     }catch{put('offline-state','無法確認離線資料狀態');}
   }
   el('offline').onclick=async()=>{
@@ -679,10 +751,11 @@
       const urls=GymLibrary.mine().filter(i=>GymLibrary.photoId(i)).flatMap(i=>[GymLibrary.image(i,0),GymLibrary.image(i,1)]);
       let done=0;
       for(let i=0;i<urls.length;i+=6){
-        await Promise.all(urls.slice(i,i+6).map(u=>fetch(u,{mode:'cors'}).then(()=>done++).catch(()=>{})));
+        await Promise.all(urls.slice(i,i+6).map(u=>fetch(u,{mode:'cors'}).then(response=>{if(response.ok)done++;}).catch(()=>{})));
         put('offline-state','下載照片 '+done+'／'+urls.length);
       }
       await offlineStatus();
+      el('offline-state').textContent+=' · 照片 '+done+'／'+urls.length;
     }catch{put('offline-state','下載失敗，請確認網路後再試。');}
     button.disabled=false;
   };

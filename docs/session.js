@@ -96,7 +96,7 @@
     };
   }
 
-  function motionTracker() {
+  function motionTracker(relative=false) {
     let anchor=null, lastMotion=null, lastSignal=null;
     return {
       update(points,at) {
@@ -110,6 +110,7 @@
         const shoulder=points[visible.find(i=>i<20)],hip=points[visible.find(i=>i>20)];
         const scale=Math.hypot(shoulder.x-hip.x,shoulder.y-hip.y);
         if(scale<20){anchor=null;lastMotion=null;lastSignal=null;return {tracking:false,active:false};}
+        if(relative)points=points.map(p=>vis(p)?{...p,x:p.x-hip.x,y:p.y-hip.y}:p);
         const ids=[...joints,...visible];
         if(!anchor)anchor=points;
         const delta=Math.max(0,...ids.filter(i=>vis(anchor[i])).map(i=>Math.hypot(points[i].x-anchor[i].x,points[i].y-anchor[i].y)));
@@ -145,6 +146,7 @@
   function create({hint='',setEndMs=quietMs,onSet=()=>{},onRest=()=>{},onRep=()=>{}}={}) {
     const tracker=exerciseTracker(hint), motion=motionTracker(), smooth=smoother();
     const timedMode=Boolean(hint&&!window.GymPose.supported(hint));
+    const unclassified=hint?null:motionTracker(true);
     let current=null, rest=null, lastTracked=null, lostAt=null, view={phase:'ready', tracking:false};
     let pausedAt=null, pausedTotal=0;
     function pause(at) {
@@ -152,6 +154,7 @@
       pausedAt=at;
       tracker.clear();smooth([]);
       motion.update([],at-pausedTotal);
+      unclassified?.update([],at-pausedTotal);
       lastTracked=null;
     }
     function resume(at) {
@@ -171,7 +174,9 @@
       const end=Math.max(current.start+1,timedMode||current.lastRep==null?current.lastActive:current.lastRep);
       const missing=current.gaps.reduce((sum,[start,stop])=>sum+Math.max(0,Math.min(end,stop)-Math.max(current.start,start)),0);
       const restAt=Math.max(end,current.gaps.at(-1)?.[1]??end);
-      const set={name,reps,durationMs:Math.max(1,end-current.start-missing),trackingInterrupted:current.gaps.length>0||lostAt!==null};
+      const set={name,reps,durationMs:Math.max(1,end-current.start-missing),
+        startAt:current.startAt,endAt:Math.max(current.startAt+1,current.endAt),
+        trackingInterrupted:current.gaps.length>0||lostAt!==null,cue:current.cue||''};
       rest={at:restAt,id:onSet(set),set};
       current=null;
     }
@@ -180,6 +185,7 @@
       at-=pausedTotal;
       const points=smooth(raw);
       const signal=motion.update(points,at);
+      const relative=unclassified?.update(points,at);
       if(!signal.tracking) {
         if(lostAt===null)lostAt=lastTracked??at;
         // 短暫看不到（不到 0.6 秒）保留這一下的進度；太久才重置
@@ -198,26 +204,33 @@
       const {move,cue}=tracker.update(points,at);
       // 可計次的動作（含自動辨識）一定要完成一下才開組，避免走動、調整器材、畫面抖動被記成一組
       const longMotion=signal.active&&signal.onset!==null&&at-signal.onset>=3000;
-      const canStart=move||(timedMode&&signal.active&&(!rest||longMotion));
+      const fallback=!hint&&relative?.active&&at-relative.onset>=3000;
+      const canStart=move||fallback||(timedMode&&signal.active&&(!rest||longMotion));
       if(!current && canStart) {
-        const start=Math.max(rest?.at||0,signal.onset??at,timedMode?0:at-6000);
+        const start=Math.max(rest?.at||0,(fallback&&!move?relative.onset:signal.onset)??at,timedMode?0:at-6000);
         if(rest)onRest(rest.id,start-rest.at);
-        rest=null;current={start,lastActive:at,quietFrom:at,gaps:[],moves:new Map()};
+        rest=null;current={start,startAt:start+pausedTotal,endAt:at+pausedTotal,lastActive:at,quietFrom:at,gaps:[],moves:new Map()};
       }
       if(current) {
-        if(signal.active)current.lastActive=Math.max(current.lastActive,signal.motionAt);
+        if(cue)current.cue=cue;
+        const activity=!hint&&current.lastRep==null&&!move?relative:signal;
+        if(activity?.active&&activity.motionAt>=current.lastActive){
+          current.lastActive=activity.motionAt;
+          if(timedMode||current.lastRep==null)current.endAt=activity.motionAt+pausedTotal;
+        }
         if(move){
+          current.endAt=at+pausedTotal;
           current.lastActive=at;current.lastRep=at;
           const count=(current.moves.get(move)||0)+1;
           current.moves.set(move,count);
           onRep(move,count);
         }
         const quiet=at-Math.max(current.quietFrom,current.lastActive)>=setEndMs;
-        const noRep=!timedMode&&at-(current.lastRep??current.start)>=setEndMs+repGapMs;
+        const noRep=current.lastRep!=null&&at-current.lastRep>=setEndMs+repGapMs;
         if(quiet||noRep)finish(); // 不清除計次狀態：剛好在結束時開始的下一下仍會算進下一組
       }
       const keys=current?[...current.moves.keys()]:[];
-      const name=keys.length>1?MIXED:keys[0]||hint||'';
+      const name=keys.length>1?MIXED:keys[0]||hint||(current?UNKNOWN:'');
       return view={phase:current?'working':rest?'rest':'ready',tracking:true,name,
         reps:current?.moves.get(name)||0,cue:current||!timedMode?cue:'',
         liveMs:current?Math.max(0,at-current.start):0,restMs:rest?Math.max(0,at-rest.at):0,

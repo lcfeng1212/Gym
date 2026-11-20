@@ -12,16 +12,16 @@
 <link rel="apple-touch-icon" href="icon-180.png">
 <link rel="icon" href="icon-192.png">
 <title>GymMonitor｜訓練監測</title>
-<link rel="stylesheet" href="style.css?v=81">
-<script defer src="library.js?v=81"></script>
-<script defer src="lib.js?v=81"></script>
-<script defer src="research.js?v=81"></script>
-<script defer src="observations.js?v=81"></script>
-<script defer src="camera.js?v=81"></script>
-<script defer src="session.js?v=81"></script>
-<script defer src="overlay.js?v=81"></script>
-<script defer src="capture.js?v=81"></script>
-<script defer src="app.js?v=81"></script>
+<link rel="stylesheet" href="style.css?v=82">
+<script defer src="library.js?v=82"></script>
+<script defer src="lib.js?v=82"></script>
+<script defer src="research.js?v=82"></script>
+<script defer src="observations.js?v=82"></script>
+<script defer src="camera.js?v=82"></script>
+<script defer src="session.js?v=82"></script>
+<script defer src="overlay.js?v=82"></script>
+<script defer src="capture.js?v=82"></script>
+<script defer src="app.js?v=82"></script>
 </head>
 <body>
 <header>
@@ -76,6 +76,7 @@
       </section>
     </aside>
   </div>
+  <button id="retry-save" class="plain" type="button" hidden>重試儲存</button>
   <p id="notice" class="subtle" role="status">影像在裝置端分析，紀錄儲存在此瀏覽器。</p>
   <p class="subtle version">GymMonitor v8.1 · 2026-11-20 · 動作資料：Free Exercise DB（公有領域）</p>
 </main>
@@ -119,7 +120,7 @@
 <dialog id="history"><div class="dialog-top"><h2>訓練紀錄</h2><button class="plain" type="button" data-close="history">關閉</button></div>
   <div id="records"></div>
   <details><summary>其他紀錄功能</summary><button id="manual" class="plain" type="button">手動新增</button>
-    <div class="dialog-actions"><button id="export" class="plain" type="button">匯出備份</button><label class="file-label plain">匯入備份<input id="import" type="file" accept=".json,application/json"></label></div>
+    <div class="dialog-actions"><button id="export" class="plain" type="button">匯出備份</button><button id="export-text" class="plain" type="button">匯出全部文字</button><label class="file-label plain">匯入備份<input id="import" type="file" accept=".json,application/json"></label></div>
     <p class="subtle">舊網址（ChatGPT 測試站）的紀錄不會自動搬過來：在舊網址「紀錄 → 匯出」，再到這裡匯入。</p>
     <p class="subtle">紀錄只存在這支手機的瀏覽器。iPhone 的 Safari 網頁若 7 天沒開，可能被系統清除；請「加入主畫面」使用，並定期匯出備份。</p>
     <p id="importmsg" role="status"></p></details></dialog>

@@ -1,11 +1,11 @@
 // GymMonitor 離線快取：載入過（或按「下載離線資料」）之後，健身房沒網路也能開啟與辨識。
 'use strict';
-const SHELL_CACHE = 'gm-shell-v8.1';
+const SHELL_CACHE = 'gm-shell-v8.2';
 const MODEL_CACHE = 'gm-models-1';   // 姿態辨識程式與模型（網址含版本，不會變）
 const PHOTO_CACHE = 'gm-photos-1';   // 動作照片
 const PHOTO_LIMIT = 300;
-const SHELL = ['./', 'index.html', 'style.css?v=81', 'library.js?v=81', 'lib.js?v=81', 'research.js?v=81',
-  'observations.js?v=81', 'camera.js?v=81', 'session.js?v=81', 'overlay.js?v=81', 'capture.js?v=81', 'app.js?v=81',
+const SHELL = ['./', 'index.html', 'style.css?v=82', 'library.js?v=82', 'lib.js?v=82', 'research.js?v=82',
+  'observations.js?v=82', 'camera.js?v=82', 'session.js?v=82', 'overlay.js?v=82', 'capture.js?v=82', 'app.js?v=82',
   'manifest.webmanifest', 'icon-180.png', 'icon-192.png', 'icon-512.png', 'fedb-steps.json'];
 
 self.addEventListener('install', event => {
@@ -13,7 +13,7 @@ self.addEventListener('install', event => {
 });
 self.addEventListener('activate', event => {
   const keep = new Set([SHELL_CACHE, MODEL_CACHE, PHOTO_CACHE]);
-  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => !keep.has(k)).map(k => caches.delete(k))))
+  event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith('gm-shell-v')&&!keep.has(k)).map(k => caches.delete(k))))
     .then(() => self.clients.claim()));
 });
 
