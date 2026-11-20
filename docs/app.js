@@ -77,7 +77,7 @@
   };
   for(const item of GymLibrary.items)el('move-options').append(new Option(item.name));
   for(const name of GymSession.timed)el('move-options').append(new Option(name));
-  put('auto-scope','不選動作時，只會自動辨識並記錄：'+GymSession.autoMoves.join('、')+'。其他動作請先選擇，否則不會記錄；動作庫標「可計次」的會自動數次數，其餘只記時間。正面拍時，彎舉、側平舉、腿彎舉、腿伸展的交替動作會左右分開計次。');
+  put('auto-scope','不選動作時，可自動辨識：'+GymSession.autoMoves.join('、')+'。持續活動但無法辨識時會試記時間；動作庫標「可計次」的會自動數次數，其餘只記時間。正面拍時，彎舉、側平舉、腿彎舉、腿伸展的交替動作會左右分開計次。');
 
   // ── 語音 ─────────────────────────────────────────
   const speech=window.speechSynthesis;
@@ -556,7 +556,7 @@
     selectedMove=name;
     const item=GymLibrary.get(name);
     put('choose-move-name',name||'自動辨識');
-    put('choose-move-note',!name?'只記划船、下拉、側平舉，其他動作請先選擇':item?.track?'可自動計次（'+item.track+'規則）':'這個動作只記時間與組數');
+    put('choose-move-note',!name?'划船、下拉、側平舉可計次；未知動作試記時間':item?.track?'可自動計次（'+item.track+'規則）':'這個動作只記時間與組數');
     put('move',name||'自動辨識');showMuscle(name);
     el('picker').close();el('detail').open&&el('detail').close();
   }

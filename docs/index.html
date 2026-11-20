@@ -21,7 +21,7 @@
 <script defer src="session.js?v=82"></script>
 <script defer src="overlay.js?v=82"></script>
 <script defer src="capture.js?v=82"></script>
-<script defer src="app.js?v=82"></script>
+<script defer src="app.js?v=821"></script>
 </head>
 <body>
 <header>
@@ -43,7 +43,7 @@
         <div id="metric" class="metric" aria-label="即時數字">—</div>
       </div>
       <div class="controls">
-        <div id="move-input"><span class="label">選擇動作（選填）</span><button id="choose-move" class="plain chooser" type="button"><span id="choose-move-name">自動辨識</span><small id="choose-move-note">只記划船、下拉、側平舉，其他動作請先選擇</small></button></div>
+        <div id="move-input"><span class="label">選擇動作（選填）</span><button id="choose-move" class="plain chooser" type="button"><span id="choose-move-name">自動辨識</span><small id="choose-move-note">划船、下拉、側平舉可計次；未知動作試記時間</small></button></div>
         <div class="main-controls"><button id="start" class="primary" type="button">開始訓練</button><button id="pause" class="plain" type="button" hidden>暫停</button><button id="stop" class="primary stop" type="button" hidden>結束訓練</button></div>
         <details id="options"><summary>訓練選項</summary>
           <div class="option-grid">
@@ -78,7 +78,7 @@
   </div>
   <button id="retry-save" class="plain" type="button" hidden>重試儲存</button>
   <p id="notice" class="subtle" role="status">影像在裝置端分析，紀錄儲存在此瀏覽器。</p>
-  <p class="subtle version">GymMonitor v8.1 · 2026-11-20 · 動作資料：Free Exercise DB（公有領域）</p>
+  <p class="subtle version">GymMonitor v8.2 · 2026-11-20 · 動作資料：Free Exercise DB（公有領域）</p>
 </main>
 <datalist id="move-options"></datalist>
 
